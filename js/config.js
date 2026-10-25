@@ -4,4 +4,4 @@
 // Never put the service_role key in this file.
 // If you change SUPABASE_URL, also update connect-src in index.html's CSP.
 export const SUPABASE_URL = 'https://wmaofvonemfhqsyfesof.supabase.co';
-export const SUPABASE_KEY = '';
+export const SUPABASE_KEY = 'sb_publishable_e17Lps_hlM_JxYHQ5GXmJw_fC6tQUQC';

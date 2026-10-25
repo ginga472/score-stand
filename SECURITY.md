@@ -28,5 +28,5 @@ Before syncing goes live:
 - [ ] Storage bucket is private, with an owner-only policy on the user's folder.
 - [ ] Only the publishable (anon) key in the client. The service-role key never goes in the repo or the app.
 - [ ] CSP `connect-src` widened to the single Supabase project URL only.
-- [ ] Automated test: an unauthenticated client tries to read every table and the bucket, and gets nothing back.
+- [ ] `supabase/check-security.sh` passes (anonymous reads, writes, bucket listing and sign-up all refused).
 - [ ] Dependabot or manual check on vendored library versions.
