@@ -23,7 +23,7 @@ Score Stand is a single-user app. The goal is a small attack surface and nothing
 
 Before syncing goes live:
 
-- [ ] Public sign-up disabled; one account, created in the dashboard.
+- [ ] Public sign-up disabled; one account, created in the dashboard with a long random password (Supabase still accepts password sign-in even though the app uses codes).
 - [ ] Magic Link email template shows the code (`{{ .Token }}`).
 - [ ] Row Level Security enabled on every table, with policies restricted to `auth.uid() = owner`.
 - [ ] Storage bucket is private, with an owner-only policy on the user's folder.
