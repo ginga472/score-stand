@@ -1,6 +1,6 @@
 // Offline support. Network first so updates show up the next time you open the
 // app online; falls back to the cached copy when offline.
-const CACHE = 'score-stand-v2';
+const CACHE = 'score-stand-v3';
 const PRECACHE = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
   'js/app.js', 'js/config.js', 'js/db.js', 'js/ink.js', 'js/library.js', 'js/pdf.js', 'js/reader.js', 'js/sync.js', 'js/ui.js',

@@ -257,6 +257,7 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   }
 
   function onTap(e) {
+    if (swiped) { swiped = false; return; } // the click that ends a swipe isn't a tap
     if (!spotsPanel.hidden) { toggleSpots(); return; }
     if (e.target.closest('.ink.live') && !(state.ink.pencilOnly && lastPointer === 'touch')) return;
     const r = stage.getBoundingClientRect();
@@ -270,6 +271,42 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   let lastPointer = 'mouse';
   stage.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType; }, true);
   stage.addEventListener('click', onTap);
+
+  // Swipe left/right to turn pages, unless this pointer is drawing.
+  let swipeStart = null;
+  let swiped = false;
+  const isDrawing = (e) => state.ink.enabled && !(state.ink.pencilOnly && e.pointerType === 'touch');
+  stage.addEventListener('pointerdown', (e) => {
+    swiped = false;
+    swipeStart = isDrawing(e) || !spotsPanel.hidden ? null : { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId };
+  }, true);
+  stage.addEventListener('pointerup', (e) => {
+    const s = swipeStart;
+    swipeStart = null;
+    if (!s || s.id !== e.pointerId) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5 || e.timeStamp - s.t > 800) return;
+    swiped = true;
+    if (dx < 0) next(); else prev();
+  }, true);
+  stage.addEventListener('pointercancel', () => { swipeStart = null; }, true);
+
+  // Keep the screen awake while reading (Safari 16.4+; home-screen apps on iOS 18.4+).
+  let wakeLock = null;
+  async function keepAwake() {
+    try {
+      if ('wakeLock' in navigator && document.visibilityState === 'visible' && !wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      }
+    } catch {
+      // Not supported or refused (e.g. low power mode); the screen just follows the iPad's setting.
+    }
+  }
+  const onVisible = () => { if (document.visibilityState === 'visible') keepAwake(); };
+  document.addEventListener('visibilitychange', onVisible);
+  keepAwake();
   document.addEventListener('keydown', onKey);
   let resizeTimer;
   const onResize = () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); };
@@ -330,6 +367,8 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   // Cleanup when leaving the reader.
   return () => {
     document.removeEventListener('keydown', onKey);
+    document.removeEventListener('visibilitychange', onVisible);
+    wakeLock?.release().catch(() => {});
     window.removeEventListener('resize', onResize);
     for (const p of docs.values()) p.then((d) => d.loadingTask.destroy()).catch(() => {});
   };

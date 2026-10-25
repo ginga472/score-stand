@@ -130,7 +130,7 @@ input[type="text"], input[type="search"], input[type="number"], input[type="emai
 .swatch.on { border-color: #fff !important; }
 .ink-bar input[type="range"] { width: 110px; }
 
-.stage { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.stage { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
 .page-slot { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; padding: 4px; }
 .page { position: relative; background: #fff; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45); }
 .page canvas { display: block; }
