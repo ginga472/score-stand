@@ -4,6 +4,12 @@
 -- Works with "Automatically expose new tables" OFF (recommended): access is granted explicitly below.
 -- Also in the dashboard: Authentication → Sign In / Providers → turn OFF "Allow new users to sign up".
 
+-- Safe to re-run while setting up: it drops and recreates everything below.
+-- Re-running later would wipe the synced copy (each device keeps its own).
+drop table if exists public.ink, public.spots, public.setlists, public.scores cascade;
+drop function if exists public.stamp_synced_at() cascade;
+drop policy if exists scores_owner_only on storage.objects;
+
 create table public.scores (
   id          uuid primary key,
   owner       uuid not null default auth.uid() references auth.users on delete cascade,
@@ -83,7 +89,8 @@ end $$;
 
 -- Private bucket for PDFs, stored at <owner id>/<score id>.pdf
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('scores', 'scores', false, 83886080, array['application/pdf']);
+values ('scores', 'scores', false, 83886080, array['application/pdf'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 
 create policy scores_owner_only on storage.objects for all to authenticated
   using (bucket_id = 'scores' and (storage.foldername(name))[1] = (select auth.uid())::text)
