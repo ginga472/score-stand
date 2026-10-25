@@ -19,9 +19,7 @@ export const getStatus = () => status;
 export function onStatus(fn) { statusListeners.add(fn); return () => statusListeners.delete(fn); }
 function setStatus(s) { status = { ...s, at: Date.now() }; for (const fn of statusListeners) fn(status); }
 
-// ---------- auth (email one-time code) ----------
-// A 6-digit code works inside the home-screen app; a magic link would open
-// Safari instead, which has separate storage from the installed app.
+// ---------- auth (email + password) ----------
 async function authFetch(path, body) {
   const res = await fetch(`${SUPABASE_URL}/auth/v1/${path}`, {
     method: 'POST',
@@ -43,14 +41,10 @@ function saveSession(data) {
   return db.setMeta('session', session).then(() => session);
 }
 
-export async function sendCode(email) {
-  // create_user: false — only the account you made in the dashboard can sign in.
-  await authFetch('otp', { email, create_user: false });
-}
-
-export async function verifyCode(email, token) {
-  await saveSession(await authFetch('verify', { type: 'email', email, token }));
-  await db.setMeta('cursors', {}); // first sync on this device pulls everything
+// The single account is created in the Supabase dashboard; sign-ups are off.
+export async function signInWithPassword(email, password) {
+  await saveSession(await authFetch('token?grant_type=password', { email, password }));
+  await db.setMeta('cursors', {});
   syncNow();
 }
 

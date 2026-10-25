@@ -14,7 +14,7 @@ Score Stand is a single-user app. The goal is a small attack surface and nothing
 ## Sync (Supabase)
 
 - `js/sync.js` talks to Supabase's REST endpoints with plain `fetch` (no SDK).
-- Sign-in is an emailed 6-digit code with `create_user: false`, so only an account that already exists can sign in.
+- Sign-in is email + password for the single account created in the dashboard (sign-ups are off). Use a long random password from a password manager.
 - The session (access + refresh token) is kept in IndexedDB on the device. The CSP blocks injected scripts, which is what would otherwise be able to read it.
 - PDFs are uploaded to and downloaded from a private bucket with the signed-in user's token; nothing is ever publicly readable.
 - The publishable key in `js/config.js` is public by design. RLS is what protects the data.
@@ -24,7 +24,6 @@ Score Stand is a single-user app. The goal is a small attack surface and nothing
 Before syncing goes live:
 
 - [ ] Public sign-up disabled; one account, created in the dashboard with a long random password (Supabase still accepts password sign-in even though the app uses codes).
-- [ ] Magic Link email template shows the code (`{{ .Token }}`).
 - [ ] Row Level Security enabled on every table, with policies restricted to `auth.uid() = owner`.
 - [ ] Storage bucket is private, with an owner-only policy on the user's folder.
 - [ ] Only the publishable (anon) key in the client. The service-role key never goes in the repo or the app.

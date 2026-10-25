@@ -78,14 +78,18 @@ export async function renderLibrary(root, go) {
     importFiles([...e.dataTransfer.files]);
   });
 
+  // Draws are async; a slow one finishing late must not overwrite a newer tab.
+  let drawSeq = 0;
+  const stale = (seq) => seq !== drawSeq;
   async function draw() {
+    const seq = ++drawSeq;
     for (const b of tabBar.children) b.classList.toggle('on', b.dataset.tab === tab);
-    if (tab === 'scores') await drawScores();
-    else if (tab === 'setlists') await drawSetlists();
-    else await drawSpots();
+    if (tab === 'scores') await drawScores(seq);
+    else if (tab === 'setlists') await drawSetlists(seq);
+    else await drawSpots(seq);
   }
 
-  async function drawScores() {
+  async function drawScores(seq = ++drawSeq) {
     const scores = await db.getAll('scores');
     const q = query.toLowerCase();
     const shown = scores
@@ -95,6 +99,7 @@ export async function renderLibrary(root, go) {
     const search = el('input', { type: 'search', class: 'search', placeholder: 'Search titles and tags', value: query,
       oninput: (e) => { query = e.target.value; drawScoresDebounced(); } });
 
+    if (stale(seq)) return;
     fill(body,
       search,
       scores.length ? null : el('div', { class: 'empty' },
@@ -151,9 +156,10 @@ export async function renderLibrary(root, go) {
     toast(`Added to ${list.name}.`);
   }
 
-  async function drawSetlists() {
+  async function drawSetlists(seq = ++drawSeq) {
     const lists = (await db.getAll('setlists')).sort((a, b) => b.createdAt - a.createdAt);
     const scores = new Map((await db.getAll('scores')).map((s) => [s.id, s]));
+    if (stale(seq)) return;
     fill(body,
       el('div', { class: 'row between' },
         el('p', { class: 'muted', text: 'A setlist plays scores back to back: turning past the last page opens the next score.' }),
@@ -198,7 +204,7 @@ export async function renderLibrary(root, go) {
     draw();
   }
 
-  async function drawSpots() {
+  async function drawSpots(seq = ++drawSeq) {
     const spots = await db.getAll('spots');
     const scores = new Map((await db.getAll('scores')).map((s) => [s.id, s]));
     const groups = new Map();
@@ -206,6 +212,7 @@ export async function renderLibrary(root, go) {
       if (!groups.has(sp.scoreId)) groups.set(sp.scoreId, []);
       groups.get(sp.scoreId).push(sp);
     }
+    if (stale(seq)) return;
     fill(body,
       el('p', { class: 'muted', text: 'Two-bar spots, one goal each. Add them from the ◎ button while reading.' }),
       groups.size ? null : el('p', { class: 'empty muted', text: 'No spots yet.' }),
@@ -233,22 +240,13 @@ export async function renderLibrary(root, go) {
   }
 
   async function signIn() {
-    const a = await promptForm('Sign in to sync', [
-      { name: 'email', label: 'Email', type: 'email', placeholder: 'you@example.com' },
-    ], { submit: 'Send code' });
-    if (!a?.email) return;
-    try {
-      await sync.sendCode(a.email);
-    } catch (e) {
-      toast(e.message);
-      return;
-    }
-    const b = await promptForm('Enter the code from your email', [
-      { name: 'code', label: '6-digit code', inputmode: 'numeric', placeholder: '123456' },
+    const v = await promptForm('Sign in to sync', [
+      { name: 'email', label: 'Email', type: 'email', autocomplete: 'username', placeholder: 'you@example.com' },
+      { name: 'password', label: 'Password', type: 'password', autocomplete: 'current-password' },
     ], { submit: 'Sign in' });
-    if (!b?.code) return;
+    if (!v?.email || !v.password) return;
     try {
-      await sync.verifyCode(a.email, b.code.replace(/\s/g, ''));
+      await sync.signInWithPassword(v.email, v.password);
       toast('Signed in. Syncing your library…');
     } catch (e) {
       toast(e.message);
