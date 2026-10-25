@@ -1,6 +1,7 @@
 -- Score Stand sync schema. Run once in the Supabase SQL editor.
 -- Single user: every row carries owner = auth.uid(), and RLS only ever
 -- lets the signed-in owner see or change their own rows.
+-- Works with "Automatically expose new tables" OFF (recommended): access is granted explicitly below.
 -- Also in the dashboard: Authentication → Sign In / Providers → turn OFF "Allow new users to sign up".
 
 create table public.scores (
@@ -68,7 +69,10 @@ begin
   foreach t in array array['scores', 'ink', 'setlists', 'spots'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('alter table public.%I force row level security', t);
-    execute format('revoke all on public.%I from anon', t);
+    execute format('revoke all on public.%I from anon, public', t);
+    -- Explicit grants, so this works with "Automatically expose new tables" turned off.
+    -- No delete: removals are soft (deleted = true).
+    execute format('grant select, insert, update on public.%I to authenticated', t);
     execute format(
       'create policy owner_only on public.%I for all to authenticated using (owner = (select auth.uid())) with check (owner = (select auth.uid()))', t);
     execute format(
