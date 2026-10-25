@@ -253,10 +253,11 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
     if (e.target.closest('input, textarea, dialog')) return;
     if (NEXT_KEYS.has(e.key)) { e.preventDefault(); next(); }
     else if (PREV_KEYS.has(e.key)) { e.preventDefault(); prev(); }
-    else if (e.key === 'Escape') onExit();
+    else if (e.key === 'Escape') { if (!spotsPanel.hidden) toggleSpots(); else onExit(); }
   }
 
   function onTap(e) {
+    if (!spotsPanel.hidden) { toggleSpots(); return; }
     if (e.target.closest('.ink.live') && !(state.ink.pencilOnly && lastPointer === 'touch')) return;
     const r = stage.getBoundingClientRect();
     const x = (e.clientX - r.left) / r.width;
@@ -287,7 +288,9 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
     fill(spotsPanel, 
       el('div', { class: 'row between' },
         el('h3', { text: 'Practice spots' }),
-        el('button', { class: 'primary small', onclick: addSpot, text: `+ Page ${state.page}` })),
+        el('div', { class: 'row' },
+          el('button', { class: 'primary small', onclick: addSpot, text: `+ Page ${state.page}` }),
+          el('button', { class: 'ghost small', title: 'Close', onclick: () => toggleSpots(), text: '✕' }))),
       spots.length ? null : el('p', { class: 'muted', text: 'Mark the tricky bars on this page so you can jump straight back to them.' }),
       el('ul', { class: 'spot-list' }, spots.map((sp) =>
         el('li', { class: sp.page === state.page ? 'here' : '' },
