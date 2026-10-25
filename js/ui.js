@@ -40,7 +40,7 @@ export function promptForm(title, fields, { submit = 'Save', danger } = {}) {
     const inputs = fields.map((f) =>
       el('label', { class: 'field' },
         el('span', { text: f.label }),
-        el('input', { name: f.name, type: f.type || 'text', value: f.value ?? '', placeholder: f.placeholder || '', inputmode: f.inputmode })));
+        el('input', { name: f.name, type: f.type || 'text', value: f.value ?? '', placeholder: f.placeholder || '', inputmode: f.inputmode, autocomplete: f.autocomplete })));
     const dlg = el('dialog', { class: 'modal' },
       el('form', { method: 'dialog' },
         el('h2', { text: title }),
@@ -54,7 +54,7 @@ export function promptForm(title, fields, { submit = 'Save', danger } = {}) {
       const out = {};
       for (const label of inputs) {
         const i = label.querySelector('input');
-        out[i.name] = i.value.trim();
+        out[i.name] = i.type === 'password' ? i.value : i.value.trim();
       }
       dlg.remove();
       resolve(ok ? out : null);

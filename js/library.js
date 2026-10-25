@@ -2,6 +2,7 @@
 import * as db from './db.js';
 import { loadPdf, makeThumb } from './pdf.js';
 import { el, clear, fill, promptForm, confirmBox, toast } from './ui.js';
+import * as sync from './sync.js';
 
 const MAX_PDF_BYTES = 80 * 1024 * 1024;
 let tab = 'scores';
@@ -47,10 +48,22 @@ export async function renderLibrary(root, go) {
   const tabBar = el('nav', { class: 'tabs' }, tabs.map(([id, label]) =>
     el('button', { class: 'tab', dataset: { tab: id }, onclick: () => { tab = id; draw(); } }, label)));
 
+  const syncBtn = el('button', { class: 'ghost sync-btn', hidden: !sync.enabled, onclick: () => accountDialog() });
+  const LABELS = { 'signed-out': 'Sign in to sync', syncing: 'Syncing…', ok: 'Synced ✓', offline: 'Offline', error: 'Sync problem' };
+  const showStatus = (st) => {
+    syncBtn.textContent = LABELS[st.state] || '';
+    syncBtn.classList.toggle('warn', st.state === 'error');
+    syncBtn.title = st.message || '';
+  };
+  showStatus(sync.getStatus());
+  const offStatus = sync.onStatus(showStatus);
+
   const view = el('div', { class: 'library' },
     el('header', { class: 'lib-head' },
       el('h1', { text: 'Score Stand' }),
-      el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF'),
+      el('div', { class: 'row' },
+        syncBtn,
+        el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF')),
       fileInput),
     tabBar,
     body);
@@ -65,14 +78,18 @@ export async function renderLibrary(root, go) {
     importFiles([...e.dataTransfer.files]);
   });
 
+  // Draws are async; a slow one finishing late must not overwrite a newer tab.
+  let drawSeq = 0;
+  const stale = (seq) => seq !== drawSeq;
   async function draw() {
+    const seq = ++drawSeq;
     for (const b of tabBar.children) b.classList.toggle('on', b.dataset.tab === tab);
-    if (tab === 'scores') await drawScores();
-    else if (tab === 'setlists') await drawSetlists();
-    else await drawSpots();
+    if (tab === 'scores') await drawScores(seq);
+    else if (tab === 'setlists') await drawSetlists(seq);
+    else await drawSpots(seq);
   }
 
-  async function drawScores() {
+  async function drawScores(seq = ++drawSeq) {
     const scores = await db.getAll('scores');
     const q = query.toLowerCase();
     const shown = scores
@@ -82,6 +99,7 @@ export async function renderLibrary(root, go) {
     const search = el('input', { type: 'search', class: 'search', placeholder: 'Search titles and tags', value: query,
       oninput: (e) => { query = e.target.value; drawScoresDebounced(); } });
 
+    if (stale(seq)) return;
     fill(body,
       search,
       scores.length ? null : el('div', { class: 'empty' },
@@ -138,9 +156,10 @@ export async function renderLibrary(root, go) {
     toast(`Added to ${list.name}.`);
   }
 
-  async function drawSetlists() {
+  async function drawSetlists(seq = ++drawSeq) {
     const lists = (await db.getAll('setlists')).sort((a, b) => b.createdAt - a.createdAt);
     const scores = new Map((await db.getAll('scores')).map((s) => [s.id, s]));
+    if (stale(seq)) return;
     fill(body,
       el('div', { class: 'row between' },
         el('p', { class: 'muted', text: 'A setlist plays scores back to back: turning past the last page opens the next score.' }),
@@ -185,7 +204,7 @@ export async function renderLibrary(root, go) {
     draw();
   }
 
-  async function drawSpots() {
+  async function drawSpots(seq = ++drawSeq) {
     const spots = await db.getAll('spots');
     const scores = new Map((await db.getAll('scores')).map((s) => [s.id, s]));
     const groups = new Map();
@@ -193,6 +212,7 @@ export async function renderLibrary(root, go) {
       if (!groups.has(sp.scoreId)) groups.set(sp.scoreId, []);
       groups.get(sp.scoreId).push(sp);
     }
+    if (stale(seq)) return;
     fill(body,
       el('p', { class: 'muted', text: 'Two-bar spots, one goal each. Add them from the ◎ button while reading.' }),
       groups.size ? null : el('p', { class: 'empty muted', text: 'No spots yet.' }),
@@ -206,6 +226,37 @@ export async function renderLibrary(root, go) {
                 el('span', { class: 'muted', text: ` p.${sp.page}${sp.tempo ? ` · ♩=${sp.tempo}` : ''}` }),
                 sp.goal ? el('div', { class: 'goal', text: sp.goal }) : null)))))));
   }
+
+  async function accountDialog() {
+    const user = await sync.currentUser();
+    if (!user) return signIn();
+    const st = sync.getStatus();
+    const v = await promptForm(`Signed in as ${user.email}`, [
+      { name: 'out', label: st.state === 'error' ? `Last sync failed: ${st.message || 'unknown error'}. Type "sign out" to sign out.` : 'Type "sign out" to sign out of this device', value: '' },
+    ], { submit: 'Sync now' });
+    if (!v) return;
+    if (v.out.toLowerCase() === 'sign out') { await sync.signOut(); toast('Signed out. Your scores stay on this device.'); return; }
+    await sync.syncNow();
+  }
+
+  async function signIn() {
+    const v = await promptForm('Sign in to sync', [
+      { name: 'email', label: 'Email', type: 'email', autocomplete: 'username', placeholder: 'you@example.com' },
+      { name: 'password', label: 'Password', type: 'password', autocomplete: 'current-password' },
+    ], { submit: 'Sign in' });
+    if (!v?.email || !v.password) return;
+    try {
+      await sync.signInWithPassword(v.email, v.password);
+      toast('Signed in. Syncing your library…');
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  // Redraw when another device's changes arrive; stop listening once we leave.
+  const redraw = () => { if (root.contains(view)) draw(); else sync.offRemoteChange(redraw); };
+  sync.onRemoteChange(redraw);
+  root._cleanup = () => { offStatus(); sync.offRemoteChange(redraw); };
 
   draw();
 }

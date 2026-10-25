@@ -11,14 +11,22 @@ Score Stand is a single-user app. The goal is a small attack surface and nothing
 - **No HTML injection.** UI text (titles, tags, spot notes) is set with `textContent`, never `innerHTML`.
 - **Import limits.** PDFs only, 80 MB max.
 
-## Phase 2 (sync) checklist
+## Sync (Supabase)
 
-Before syncing goes live with Supabase:
+- `js/sync.js` talks to Supabase's REST endpoints with plain `fetch` (no SDK).
+- Sign-in is email + password for the single account created in the dashboard (sign-ups are off). Use a long random password from a password manager.
+- The session (access + refresh token) is kept in IndexedDB on the device. The CSP blocks injected scripts, which is what would otherwise be able to read it.
+- PDFs are uploaded to and downloaded from a private bucket with the signed-in user's token; nothing is ever publicly readable.
+- The publishable key in `js/config.js` is public by design. RLS is what protects the data.
 
-- [ ] Public sign-up disabled; one account, created in the dashboard. Sign in with a magic link or passkey.
+## Sync checklist
+
+Before syncing goes live:
+
+- [ ] Public sign-up disabled; one account, created in the dashboard with a long random password (Supabase still accepts password sign-in even though the app uses codes).
 - [ ] Row Level Security enabled on every table, with policies restricted to `auth.uid() = owner`.
-- [ ] Storage bucket is private; PDFs are read through short-lived signed URLs.
+- [ ] Storage bucket is private, with an owner-only policy on the user's folder.
 - [ ] Only the publishable (anon) key in the client. The service-role key never goes in the repo or the app.
 - [ ] CSP `connect-src` widened to the single Supabase project URL only.
-- [ ] Automated test: an unauthenticated client tries to read every table and the bucket, and gets nothing back.
+- [ ] `supabase/check-security.sh` passes (anonymous reads, writes, bucket listing and sign-up all refused).
 - [ ] Dependabot or manual check on vendored library versions.

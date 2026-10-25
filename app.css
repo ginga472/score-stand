@@ -54,7 +54,7 @@ button.primary { background: var(--accent); color: var(--accent-ink); border-col
 button.danger { background: #b3261e; color: #fff; border-color: transparent; }
 button.ghost { background: transparent; }
 button.small { padding: 6px 10px; min-height: 36px; font-size: 14px; }
-input[type="text"], input[type="search"], input[type="number"], input:not([type]) {
+input[type="text"], input[type="search"], input[type="number"], input[type="email"], input[type="password"], input:not([type]) {
   font: inherit;
   color: inherit;
   background: var(--panel);
@@ -167,3 +167,6 @@ input[type="text"], input[type="search"], input[type="number"], input:not([type]
   .lib-head h1 { font-size: 22px; }
   .card-actions button { flex: 1; }
 }
+
+.sync-btn { font-size: 14px; color: var(--muted); }
+.sync-btn.warn { color: var(--accent); }
