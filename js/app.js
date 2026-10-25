@@ -2,6 +2,7 @@
 import * as db from './db.js';
 import { renderLibrary } from './library.js';
 import { openReader } from './reader.js';
+import * as sync from './sync.js';
 
 const root = document.getElementById('app');
 let cleanup = null;
@@ -10,6 +11,7 @@ const go = (hash) => { location.hash = hash; };
 
 async function route() {
   if (cleanup) { cleanup(); cleanup = null; }
+  if (root._cleanup) { root._cleanup(); root._cleanup = null; }
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   const onExit = () => go('#/');
   try {
@@ -31,6 +33,7 @@ async function route() {
 
 window.addEventListener('hashchange', route);
 route();
+sync.start();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

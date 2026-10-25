@@ -11,7 +11,8 @@ create table public.scores (
   page_count  int not null,
   last_page   int not null default 1,
   added_at    timestamptz not null default now(),
-  updated_at  timestamptz not null default now(),
+  updated_ms  bigint not null,              -- client clock, used for last-write-wins
+  synced_at   timestamptz not null default now(),  -- server clock, used as the pull cursor
   deleted     boolean not null default false
 );
 
@@ -20,7 +21,9 @@ create table public.ink (
   page        int not null,
   owner       uuid not null default auth.uid() references auth.users on delete cascade,
   strokes     jsonb not null,
-  updated_at  timestamptz not null default now(),
+  updated_ms  bigint not null,
+  synced_at   timestamptz not null default now(),
+  deleted     boolean not null default false,
   primary key (score_id, page)
 );
 
@@ -30,7 +33,8 @@ create table public.setlists (
   name        text not null,
   score_ids   uuid[] not null default '{}',
   created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now(),
+  updated_ms  bigint not null,              -- client clock, used for last-write-wins
+  synced_at   timestamptz not null default now(),  -- server clock, used as the pull cursor
   deleted     boolean not null default false
 );
 
@@ -43,9 +47,19 @@ create table public.spots (
   goal        text,
   tempo       int,
   created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now(),
+  updated_ms  bigint not null,              -- client clock, used for last-write-wins
+  synced_at   timestamptz not null default now(),  -- server clock, used as the pull cursor
   deleted     boolean not null default false
 );
+
+-- Every write stamps synced_at with the server clock, so devices can ask
+-- "what changed since I last looked?" without trusting each other's clocks.
+create function public.stamp_synced_at() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  new.synced_at := now();
+  return new;
+end $$;
 
 -- Lock everything down: no access for anonymous visitors at all.
 do $$
@@ -57,6 +71,9 @@ begin
     execute format('revoke all on public.%I from anon', t);
     execute format(
       'create policy owner_only on public.%I for all to authenticated using (owner = (select auth.uid())) with check (owner = (select auth.uid()))', t);
+    execute format(
+      'create trigger stamp before insert or update on public.%I for each row execute function public.stamp_synced_at()', t);
+    execute format('create index on public.%I (owner, synced_at)', t);
   end loop;
 end $$;
 

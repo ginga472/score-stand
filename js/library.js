@@ -2,6 +2,7 @@
 import * as db from './db.js';
 import { loadPdf, makeThumb } from './pdf.js';
 import { el, clear, fill, promptForm, confirmBox, toast } from './ui.js';
+import * as sync from './sync.js';
 
 const MAX_PDF_BYTES = 80 * 1024 * 1024;
 let tab = 'scores';
@@ -47,10 +48,22 @@ export async function renderLibrary(root, go) {
   const tabBar = el('nav', { class: 'tabs' }, tabs.map(([id, label]) =>
     el('button', { class: 'tab', dataset: { tab: id }, onclick: () => { tab = id; draw(); } }, label)));
 
+  const syncBtn = el('button', { class: 'ghost sync-btn', hidden: !sync.enabled, onclick: () => accountDialog() });
+  const LABELS = { 'signed-out': 'Sign in to sync', syncing: 'Syncing…', ok: 'Synced ✓', offline: 'Offline', error: 'Sync problem' };
+  const showStatus = (st) => {
+    syncBtn.textContent = LABELS[st.state] || '';
+    syncBtn.classList.toggle('warn', st.state === 'error');
+    syncBtn.title = st.message || '';
+  };
+  showStatus(sync.getStatus());
+  const offStatus = sync.onStatus(showStatus);
+
   const view = el('div', { class: 'library' },
     el('header', { class: 'lib-head' },
       el('h1', { text: 'Score Stand' }),
-      el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF'),
+      el('div', { class: 'row' },
+        syncBtn,
+        el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF')),
       fileInput),
     tabBar,
     body);
@@ -206,6 +219,46 @@ export async function renderLibrary(root, go) {
                 el('span', { class: 'muted', text: ` p.${sp.page}${sp.tempo ? ` · ♩=${sp.tempo}` : ''}` }),
                 sp.goal ? el('div', { class: 'goal', text: sp.goal }) : null)))))));
   }
+
+  async function accountDialog() {
+    const user = await sync.currentUser();
+    if (!user) return signIn();
+    const st = sync.getStatus();
+    const v = await promptForm(`Signed in as ${user.email}`, [
+      { name: 'out', label: st.state === 'error' ? `Last sync failed: ${st.message || 'unknown error'}. Type "sign out" to sign out.` : 'Type "sign out" to sign out of this device', value: '' },
+    ], { submit: 'Sync now' });
+    if (!v) return;
+    if (v.out.toLowerCase() === 'sign out') { await sync.signOut(); toast('Signed out. Your scores stay on this device.'); return; }
+    await sync.syncNow();
+  }
+
+  async function signIn() {
+    const a = await promptForm('Sign in to sync', [
+      { name: 'email', label: 'Email', type: 'email', placeholder: 'you@example.com' },
+    ], { submit: 'Send code' });
+    if (!a?.email) return;
+    try {
+      await sync.sendCode(a.email);
+    } catch (e) {
+      toast(e.message);
+      return;
+    }
+    const b = await promptForm('Enter the code from your email', [
+      { name: 'code', label: '6-digit code', inputmode: 'numeric', placeholder: '123456' },
+    ], { submit: 'Sign in' });
+    if (!b?.code) return;
+    try {
+      await sync.verifyCode(a.email, b.code.replace(/\s/g, ''));
+      toast('Signed in. Syncing your library…');
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  // Redraw when another device's changes arrive; stop listening once we leave.
+  const redraw = () => { if (root.contains(view)) draw(); else sync.offRemoteChange(redraw); };
+  sync.onRemoteChange(redraw);
+  root._cleanup = () => { offStatus(); sync.offRemoteChange(redraw); };
 
   draw();
 }

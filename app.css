@@ -167,3 +167,6 @@ input[type="text"], input[type="search"], input[type="number"], input:not([type]
   .lib-head h1 { font-size: 22px; }
   .card-actions button { flex: 1; }
 }
+
+.sync-btn { font-size: 14px; color: var(--muted); }
+.sync-btn.warn { color: var(--accent); }

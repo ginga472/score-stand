@@ -11,7 +11,7 @@ A personal sheet-music reader for iPad, iPhone and Mac. It's an installable web 
 - **Setlists**: play several scores back to back.
 - **Practice spots** (◎): bookmark a page with a name, one goal and a target tempo, then jump back to it from the reader or the Spots tab.
 
-Everything is stored on the device in IndexedDB for now. Syncing between devices (Supabase) is phase 2. See [SECURITY.md](SECURITY.md).
+Everything is stored on the device in IndexedDB. When you sign in (top of the library), it syncs with your Supabase project: scores, markup, setlists and spots, last edit wins. Setup is in `supabase/schema.sql`; security notes in [SECURITY.md](SECURITY.md).
 
 ## Running locally
 
