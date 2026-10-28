@@ -3,6 +3,7 @@ import * as db from './db.js';
 import { loadPdf, makeThumb } from './pdf.js';
 import { el, clear, fill, promptForm, confirmBox, toast } from './ui.js';
 import * as sync from './sync.js';
+import * as native from './native.js';
 
 const MAX_PDF_BYTES = 80 * 1024 * 1024;
 let tab = 'scores';
@@ -58,10 +59,22 @@ export async function renderLibrary(root, go) {
   showStatus(sync.getStatus());
   const offStatus = sync.onStatus(showStatus);
 
+  // Inside the iPad app: record a practice session, and jump to Chord Sprint.
+  const recBtn = el('button', { class: 'ghost rec-btn', hidden: !native.inApp,
+    onclick: () => (native.recording().recording ? native.stopRecording() : native.startRecording()) });
+  const showRec = (st) => {
+    recBtn.textContent = st.recording ? '■ Stop recording' : '● Record session';
+    recBtn.classList.toggle('on', st.recording);
+  };
+  showRec(native.recording());
+  const offRec = native.onRecording(showRec);
+
   const view = el('div', { class: 'library' },
     el('header', { class: 'lib-head' },
-      el('h1', { text: 'Score Stand' }),
+      el('h1', { text: native.inApp ? 'Music' : 'Score Stand' }),
       el('div', { class: 'row' },
+        recBtn,
+        native.inApp && el('button', { class: 'ghost', onclick: native.openChordSprint }, 'Chord Sprint ›'),
         syncBtn,
         el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF')),
       fileInput),
@@ -256,7 +269,7 @@ export async function renderLibrary(root, go) {
   // Redraw when another device's changes arrive; stop listening once we leave.
   const redraw = () => { if (root.contains(view)) draw(); else sync.offRemoteChange(redraw); };
   sync.onRemoteChange(redraw);
-  root._cleanup = () => { offStatus(); sync.offRemoteChange(redraw); };
+  root._cleanup = () => { offStatus(); offRec(); sync.offRemoteChange(redraw); };
 
   draw();
 }

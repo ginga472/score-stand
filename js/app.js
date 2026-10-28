@@ -35,6 +35,7 @@ window.addEventListener('hashchange', route);
 route();
 sync.start();
 
-if ('serviceWorker' in navigator) {
+// The iPad app serves these files itself, so it doesn't need the offline cache.
+if ('serviceWorker' in navigator && !window.__pianoApp) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }

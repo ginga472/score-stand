@@ -170,3 +170,4 @@ input[type="text"], input[type="search"], input[type="number"], input[type="emai
 
 .sync-btn { font-size: 14px; color: var(--muted); }
 .sync-btn.warn { color: var(--accent); }
+.rec-btn.on { color: #e5484d; font-weight: 600; }

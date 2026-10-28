@@ -1,0 +1,84 @@
+/* Chord Sprint: read a line of triads on the grand staff, play each one on the piano.
+   Input arrives as raw MIDI from the iPad app (window.midiIn) or from Web MIDI in desktop Chrome. */
+:root{
+  --bg:#f4f1ea; --paper:#fffdf8; --ink:#1d1b18; --muted:#776f63; --line:#ddd5c6;
+  --accent:#2f5bd3; --accent-soft:#e3e9fb; --ok:#1f8a4c; --ok-soft:#dcf0e3; --bad:#c8372d; --bad-soft:#f8dedb;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --music:"Apple Symbols","Segoe UI Symbol","Noto Music","Bravura Text",serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#15140f; --paper:#1e1c17; --ink:#ece7dc; --muted:#a39b8d; --line:#3a362e;
+  --accent:#86a3f5; --accent-soft:#232c45; --ok:#5fc48c; --ok-soft:#1b3326; --bad:#f08077; --bad-soft:#47221f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#15140f; --paper:#1e1c17; --ink:#ece7dc; --muted:#a39b8d; --line:#3a362e;
+  --accent:#86a3f5; --accent-soft:#232c45; --ok:#5fc48c; --ok-soft:#1b3326; --bad:#f08077; --bad-soft:#47221f; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.4;
+  padding:max(12px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;overflow:hidden}
+.app{height:100%;display:grid;grid-template-rows:auto 6px 1fr auto;gap:10px;max-width:1400px;margin:0 auto}
+header{display:flex;align-items:center;gap:16px;min-height:44px}
+header h1{font-size:1.15rem;font-weight:650;margin:0;letter-spacing:-.01em}
+.status{flex:1;text-align:center;color:var(--muted);font-size:1rem}
+.status b{color:var(--ink)}
+.big{font-size:1.6rem;font-weight:650;font-variant-numeric:tabular-nums;color:var(--ink);min-width:3ch;text-align:right}
+.lbl{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.stat{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}
+.dev{display:flex;align-items:center;gap:6px;font-size:.85rem;color:var(--muted);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--bad);flex:none}
+.dot.on{background:var(--ok)}
+button{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-height:44px;touch-action:manipulation;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left;transition:transform .2s linear}
+.sheet{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:6px 8px;display:flex;flex-direction:column;justify-content:space-evenly;min-height:0;overflow:hidden}
+.sheet svg{width:100%;height:auto;max-height:50%;display:block}
+.sheet .next{opacity:.55}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;color:var(--muted);font-size:.95rem}
+svg line{stroke:var(--ink);stroke-width:1.2}
+svg line.bl{stroke-width:1.6}
+svg line.end{stroke-width:4}
+svg .clef,svg .acc{fill:var(--ink);font-family:var(--music)}
+svg .hd{fill:var(--ink)} svg .hole{fill:var(--paper)}
+svg .curbar{fill:var(--accent-soft)}
+svg .badbar{fill:var(--bad-soft)}
+svg .ok .hd,svg .ok .acc{fill:var(--ok)}
+svg .held .hd{fill:var(--accent)}
+svg .wrong .hd,svg .wrong .acc{fill:var(--bad)} svg .wrong line{stroke:var(--bad)}
+svg .name{fill:var(--ok);font:600 22px var(--body);text-anchor:middle}
+svg .name.skip{fill:var(--bad)}
+svg .roman{fill:var(--muted);font:500 17px var(--body);text-anchor:middle}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:grid;place-items:center;padding:16px;z-index:5}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:22px 24px;width:min(640px,100%);max-height:100%;overflow:auto;display:grid;gap:16px}
+.card h2{margin:0;font-size:1.4rem}
+.row{display:grid;gap:6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips button{min-width:52px;padding:6px 12px}
+.chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.hint{color:var(--muted);font-size:.9rem;margin:0}
+.res{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center}
+.res div{background:var(--bg);border-radius:12px;padding:10px}
+.res b{display:block;font-size:2rem;font-variant-numeric:tabular-nums}
+.slow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.slow figure{margin:0;background:var(--bg);border-radius:12px;padding:6px;text-align:center;font-size:.9rem}
+.slow svg{width:100%;height:auto}
+.actions{display:flex;gap:10px;justify-content:flex-end}
+.hist svg{width:100%;height:auto}
+.hist .ax{fill:var(--muted);font:13px var(--body)}
+.hist .grid{stroke:var(--line);stroke-width:1}
+.hist polyline{fill:none;stroke:var(--accent);stroke-width:2.5}
+.hist circle{fill:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:500;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+.rec{display:flex;align-items:center;gap:6px;color:var(--bad);font-weight:600;font-variant-numeric:tabular-nums;font-size:.95rem;background:none;border:none;padding:0 4px;min-height:44px}
+.rec i{width:11px;height:11px;border-radius:50%;background:var(--bad);animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.big-btn{font-size:1.15rem;padding:14px 22px}
+.big-btn.stop{background:var(--bad);border-color:var(--bad);color:#fff;font-weight:600}
+.recnow{color:var(--bad);font-weight:600;margin-left:12px;font-variant-numeric:tabular-nums}
+td button{min-height:36px;padding:4px 10px;font-size:.85rem}
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.shake{animation:shake .18s 2}

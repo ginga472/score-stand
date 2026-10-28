@@ -13,6 +13,14 @@ A personal sheet-music reader for iPad, iPhone and Mac. It's an installable web 
 
 Everything is stored on the device in IndexedDB. When you sign in (top of the library), it syncs with your Supabase project: scores, markup, setlists and spots, last edit wins. Setup is in `supabase/schema.sql`; security notes in [SECURITY.md](SECURITY.md).
 
+## Chord Sprint
+
+`chord-sprint/` is a sight-reading game: a line of triads on the grand staff, play each one on a MIDI piano (Web MIDI in desktop Chrome, or USB in the iPad app). Tracks speed per chord and brings slow ones back more often.
+
+## iPad app
+
+`ios/PianoPractice.xcodeproj` wraps the reader and Chord Sprint into one iPad app that also hears the piano over USB and can record practice sessions. Open it in Xcode, pick your Team under Signing & Capabilities, plug in the iPad and Run. With a free Apple ID, run it again every 7 days.
+
 ## Running locally
 
 ```sh
@@ -37,5 +45,8 @@ js/ink.js           Pencil markup (perfect-freehand)
 js/pdf.js           pdf.js wrapper
 js/db.js            IndexedDB
 js/ui.js            DOM helpers (textContent only, no innerHTML)
+js/native.js        bridge to the iPad app (no-op in a browser)
+chord-sprint/       chord sight-reading game
+ios/                iPad app (Swift: web view shell, USB MIDI, session recorder)
 vendor/             pdf.js 6.4.299 (legacy build), perfect-freehand 1.2.3
 ```
