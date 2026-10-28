@@ -1,4 +1,4 @@
-// Bridge to the Piano Practice iPad app, which bundles Score Stand next to Chord Sprint.
+// Bridge to the Woodshed iPad app, which bundles Score Stand next to Chord Sprint.
 // In a browser none of this exists and every call is a no-op.
 export const inApp = !!window.__pianoApp;
 

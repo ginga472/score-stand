@@ -97,7 +97,7 @@ final class SessionRecorder {
         iso.formatOptions = [.withInternetDateTime]
         let body: [String: Any] = [
             "version": 1,
-            "app": "piano-practice",
+            "app": "woodshed",
             "started": iso.string(from: startDate),
             "startedEpochMs": Int(startedMs),
             "durationMs": ms(mach_absolute_time()),

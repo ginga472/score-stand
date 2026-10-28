@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct PianoPracticeApp: App {
+struct WoodshedApp: App {
     var body: some Scene {
         WindowGroup {
             PracticeView()

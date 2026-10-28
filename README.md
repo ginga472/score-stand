@@ -19,7 +19,7 @@ Everything is stored on the device in IndexedDB. When you sign in (top of the li
 
 ## iPad app
 
-`ios/PianoPractice.xcodeproj` wraps the reader and Chord Sprint into one iPad app that also hears the piano over USB and can record practice sessions. Open it in Xcode, pick your Team under Signing & Capabilities, plug in the iPad and Run. With a free Apple ID, run it again every 7 days.
+`ios/Woodshed.xcodeproj` (the Woodshed app) wraps the reader and Chord Sprint into one iPad app that also hears the piano over USB and can record practice sessions. Open it in Xcode, pick your Team under Signing & Capabilities, plug in the iPad and Run. With a free Apple ID, run it again every 7 days.
 
 ## Running locally
 

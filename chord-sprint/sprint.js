@@ -1,5 +1,5 @@
 "use strict";
-// In the iPad app the page runs inside Piano Practice: the app records sessions and shows its own
+// In the iPad app the page runs inside the Woodshed app: the app records sessions and shows its own
 // recording timer, and "Music" switches back to the Score Stand library.
 const IN_APP=!!window.__pianoApp;
 const $=id=>document.getElementById(id);

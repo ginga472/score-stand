@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		D7B2E0000000000000000001 /* PianoPractice.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PianoPractice.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D7B2E0000000000000000001 /* Woodshed.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Woodshed.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		D7B2E0000000000000000002 /* PianoPractice */ = {
+		D7B2E0000000000000000002 /* Woodshed */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = PianoPractice;
+			path = Woodshed;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -32,7 +32,7 @@
 		D7B2E0000000000000000004 = {
 			isa = PBXGroup;
 			children = (
-				D7B2E0000000000000000002 /* PianoPractice */,
+				D7B2E0000000000000000002 /* Woodshed */,
 				D7B2E0000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -40,7 +40,7 @@
 		D7B2E0000000000000000005 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D7B2E0000000000000000001 /* PianoPractice.app */,
+				D7B2E0000000000000000001 /* Woodshed.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		D7B2E0000000000000000006 /* PianoPractice */ = {
+		D7B2E0000000000000000006 /* Woodshed */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = D7B2E000000000000000000B /* Build configuration list for PBXNativeTarget "PianoPractice" */;
+			buildConfigurationList = D7B2E000000000000000000B /* Build configuration list for PBXNativeTarget "Woodshed" */;
 			buildPhases = (
 				D7B2E0000000000000000007 /* Sources */,
 				D7B2E0000000000000000003 /* Frameworks */,
@@ -62,13 +62,13 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				D7B2E0000000000000000002 /* PianoPractice */,
+				D7B2E0000000000000000002 /* Woodshed */,
 			);
-			name = PianoPractice;
+			name = Woodshed;
 			packageProductDependencies = (
 			);
-			productName = PianoPractice;
-			productReference = D7B2E0000000000000000001 /* PianoPractice.app */;
+			productName = Woodshed;
+			productReference = D7B2E0000000000000000001 /* Woodshed.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -86,7 +86,7 @@
 					};
 				};
 			};
-			buildConfigurationList = D7B2E000000000000000000A /* Build configuration list for PBXProject "PianoPractice" */;
+			buildConfigurationList = D7B2E000000000000000000A /* Build configuration list for PBXProject "Woodshed" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -100,7 +100,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				D7B2E0000000000000000006 /* PianoPractice */,
+				D7B2E0000000000000000006 /* Woodshed */,
 			);
 		};
 /* End PBXProject section */
@@ -195,7 +195,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Piano Practice";
+				INFOPLIST_KEY_CFBundleDisplayName = Woodshed;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -209,7 +209,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ginga472.pianopractice;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ginga472.woodshed;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -226,7 +226,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Piano Practice";
+				INFOPLIST_KEY_CFBundleDisplayName = Woodshed;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -240,7 +240,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ginga472.pianopractice;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ginga472.woodshed;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -252,7 +252,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		D7B2E000000000000000000A /* Build configuration list for PBXProject "PianoPractice" */ = {
+		D7B2E000000000000000000A /* Build configuration list for PBXProject "Woodshed" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				D7B2E000000000000000000C /* Debug */,
@@ -261,7 +261,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		D7B2E000000000000000000B /* Build configuration list for PBXNativeTarget "PianoPractice" */ = {
+		D7B2E000000000000000000B /* Build configuration list for PBXNativeTarget "Woodshed" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				D7B2E000000000000000000E /* Debug */,

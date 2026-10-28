@@ -17,7 +17,7 @@ final class MIDIInput: @unchecked Sendable {
     private var port = MIDIPortRef()
 
     init() {
-        MIDIClientCreateWithBlock("Piano Practice" as CFString, &client) { [weak self] _ in
+        MIDIClientCreateWithBlock("Woodshed" as CFString, &client) { [weak self] _ in
             self?.connectAll()
         }
         MIDIInputPortCreateWithProtocol(client, "Input" as CFString, ._1_0, &port) { [weak self] list, _ in
