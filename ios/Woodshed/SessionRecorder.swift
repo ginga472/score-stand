@@ -11,6 +11,8 @@ final class SessionRecorder {
         let durationMs: Int
         let notes: Int
         let playingMs: Int
+        let pieces: [String]     // scores opened while recording, in order
+        let sprintRounds: Int
     }
 
     private(set) var isActive = false
@@ -135,11 +137,19 @@ final class SessionRecorder {
             let onsets = events.filter { $0.count == 4 && $0[1] & 0xF0 == 0x90 && $0[3] > 0 }.map { $0[0] }
             var playing = onsets.isEmpty ? 0 : 1000
             for (a, b) in zip(onsets, onsets.dropFirst()) where b - a <= 5000 { playing += b - a }
+            let markers = obj["markers"] as? [[String: Any]] ?? []
+            var pieces: [String] = []
+            for m in markers where m["k"] as? String == "page" {
+                if let score = m["score"] as? String, !pieces.contains(score) { pieces.append(score) }
+            }
+            let rounds = markers.filter { $0["k"] as? String == "round_start" }.count
             return Summary(name: url.lastPathComponent,
                            started: Double(obj["startedEpochMs"] as? Int ?? 0),
                            durationMs: obj["durationMs"] as? Int ?? 0,
                            notes: onsets.count,
-                           playingMs: playing)
+                           playingMs: playing,
+                           pieces: pieces,
+                           sprintRounds: rounds)
         }.sorted { $0.started > $1.started }
     }
 }

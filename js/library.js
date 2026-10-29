@@ -45,6 +45,7 @@ export async function renderLibrary(root, go) {
   }
 
   const tabs = [['scores', 'Scores'], ['setlists', 'Setlists'], ['spots', 'Spots']];
+  if (native.inApp) tabs.push(['sessions', 'Sessions']);
   const body = el('section', { class: 'lib-body' });
   const tabBar = el('nav', { class: 'tabs' }, tabs.map(([id, label]) =>
     el('button', { class: 'tab', dataset: { tab: id }, onclick: () => { tab = id; draw(); } }, label)));
@@ -67,7 +68,7 @@ export async function renderLibrary(root, go) {
     recBtn.classList.toggle('on', st.recording);
   };
   showRec(native.recording());
-  const offRec = native.onRecording(showRec);
+  const offRec = native.onRecording((st) => { showRec(st); if (tab === 'sessions') draw(); });
 
   const view = el('div', { class: 'library' },
     el('header', { class: 'lib-head' },
@@ -99,7 +100,8 @@ export async function renderLibrary(root, go) {
     for (const b of tabBar.children) b.classList.toggle('on', b.dataset.tab === tab);
     if (tab === 'scores') await drawScores(seq);
     else if (tab === 'setlists') await drawSetlists(seq);
-    else await drawSpots(seq);
+    else if (tab === 'spots') await drawSpots(seq);
+    else drawSessions();
   }
 
   async function drawScores(seq = ++drawSeq) {
@@ -240,6 +242,48 @@ export async function renderLibrary(root, go) {
                 sp.goal ? el('div', { class: 'goal', text: sp.goal }) : null)))))));
   }
 
+  // Practice recordings live in the app's Documents/Sessions folder; the app sends the list.
+  let delArm = null;
+  let tick;
+  function drawSessions() {
+    clearInterval(tick);
+    const st = native.recording();
+    const clock = (ms) => { const s = Math.round(ms / 1000); return s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+    const now = el('strong', { class: 'rec-clock' });
+    if (st.recording) {
+      const upd = () => { if (!root.contains(now)) return clearInterval(tick); now.textContent = clock(Date.now() - st.startedMs); };
+      upd();
+      tick = setInterval(upd, 1000);
+    }
+    const when = (ms) => new Date(ms).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    fill(body,
+      el('article', { class: 'setlist rec-panel' + (st.recording ? ' live' : '') },
+        el('div', { class: 'row between' },
+          st.recording
+            ? el('div', {}, el('span', { class: 'rec-dot' }), el('span', { text: ' Recording ' }), now)
+            : el('p', { class: 'muted', text: 'Records every note you play on the piano, on any screen, until you stop. Stops by itself after 20 quiet minutes.' }),
+          st.recording
+            ? el('button', { class: 'danger', onclick: native.stopRecording }, '■ Stop & save')
+            : el('button', { class: 'primary', onclick: native.startRecording }, '● Start recording'))),
+      st.sessions.length ? null : el('p', { class: 'empty muted', text: 'No saved sessions yet.' }),
+      st.sessions.length ? el('p', { class: 'muted', text: 'Share a session to the Claude app to get a practice summary. They are also in the Files app under On My iPad › Woodshed › Sessions.' }) : null,
+      el('ul', { class: 'session-list' }, st.sessions.map((x) => {
+        const active = x.durationMs ? Math.round((100 * x.playingMs) / x.durationMs) : 0;
+        const what = [...(x.pieces || [])];
+        if (x.sprintRounds) what.push(`Chord Sprint × ${x.sprintRounds}`);
+        return el('li', { class: 'setlist session' },
+          el('div', { class: 'session-meta' },
+            el('strong', { text: when(x.started) }),
+            el('span', { class: 'muted', text: `${clock(x.durationMs)} long · ${clock(x.playingMs)} playing (${active}%) · ${x.notes} notes` }),
+            what.length ? el('div', { class: 'tags' }, what.map((t) => el('span', { class: 'tag', text: t }))) : null),
+          el('div', { class: 'row' },
+            el('button', { class: 'ghost small', onclick: () => native.shareSession(x.name) }, 'Share'),
+            el('button', { class: 'ghost small' + (delArm === x.name ? ' warn' : ''), onclick: () => {
+              if (delArm === x.name) { delArm = null; native.deleteSession(x.name); } else { delArm = x.name; drawSessions(); }
+            } }, delArm === x.name ? 'Tap to confirm' : 'Delete')));
+      })));
+  }
+
   async function accountDialog() {
     const user = await sync.currentUser();
     if (!user) return signIn();
@@ -269,7 +313,7 @@ export async function renderLibrary(root, go) {
   // Redraw when another device's changes arrive; stop listening once we leave.
   const redraw = () => { if (root.contains(view)) draw(); else sync.offRemoteChange(redraw); };
   sync.onRemoteChange(redraw);
-  root._cleanup = () => { offStatus(); offRec(); sync.offRemoteChange(redraw); };
+  root._cleanup = () => { clearInterval(tick); offStatus(); offRec(); sync.offRemoteChange(redraw); };
 
   draw();
 }

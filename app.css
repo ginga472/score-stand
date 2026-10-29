@@ -171,3 +171,13 @@ input[type="text"], input[type="search"], input[type="number"], input[type="emai
 .sync-btn { font-size: 14px; color: var(--muted); }
 .sync-btn.warn { color: var(--accent); }
 .rec-btn.on { color: #e5484d; font-weight: 600; }
+
+.rec-panel.live { border-color: #e5484d; }
+.rec-panel p { margin: 0; }
+.rec-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #e5484d; }
+.rec-clock { font-variant-numeric: tabular-nums; }
+.session-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.session { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.session-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.session-meta .muted { font-size: 14px; }
+button.warn { color: var(--accent); font-weight: 600; }

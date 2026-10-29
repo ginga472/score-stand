@@ -182,7 +182,8 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
 
     private func sendSession(event: String?) {
         let sessions = recorder.list().map {
-            ["name": $0.name, "started": $0.started, "durationMs": $0.durationMs, "notes": $0.notes, "playingMs": $0.playingMs] as [String: Any]
+            ["name": $0.name, "started": $0.started, "durationMs": $0.durationMs, "notes": $0.notes, "playingMs": $0.playingMs,
+             "pieces": $0.pieces, "sprintRounds": $0.sprintRounds] as [String: Any]
         }
         var state: [String: Any] = ["recording": recorder.isActive, "startedMs": recorder.startedMs, "sessions": sessions]
         if let event { state["event"] = event }
@@ -240,7 +241,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
 
     @objc private func pillTapped() {
         let alert = UIAlertController(title: "Stop recording?",
-                                      message: "The session is saved and listed under Chord Sprint › Session, where you can share it.",
+                                      message: "The session is saved and listed under Music › Sessions, where you can share it.",
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Keep recording", style: .cancel))
         alert.addAction(UIAlertAction(title: "Stop & save", style: .default) { [weak self] _ in
