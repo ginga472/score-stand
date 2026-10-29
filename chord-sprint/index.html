@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<!-- Only our own files may load; no inline script or style. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Chord Sprint</title>
+<link rel="stylesheet" href="sprint.css">
+</head><body>
+<div class="app">
+  <header>
+    <nav class="switch" id="appnav" aria-label="Screens" hidden><button data-go="music">Music</button><button class="on" aria-current="page">Chord Sprint</button><button data-go="sessions">Sessions</button></nav>
+    <h1 id="title">Chord Sprint</h1>
+    <div class="dev" id="dev"><span class="dot" id="dot"></span><span id="devname">No piano</span></div>
+    <div class="status" id="status"></div>
+    <div class="stat"><span class="big" id="time">60</span><span class="lbl" id="timelbl">sec</span></div>
+    <div class="stat"><span class="big" id="score">0</span><span class="lbl">chords</span></div>
+    <button class="rec" id="rec" hidden><i></i><span id="rectext">0:00</span></button>
+    <button id="sessbtn">Session</button>
+    <button class="apprec" id="apprec" hidden>● Record</button>
+    <button id="histbtn">History</button>
+    <button id="gear" aria-label="Settings">Settings</button>
+  </header>
+  <div class="bar"><i id="timebar"></i></div>
+  <div class="sheet" id="sheet"></div>
+  <div class="foot"><span id="keyline"></span><span><button id="finish" hidden>Finish round</button> <button id="skip">Skip chord</button></span></div>
+</div>
+
+<div class="overlay" id="settings" hidden><div class="card">
+  <h2>Settings</h2>
+  <div class="row"><span class="lbl">Keys (each line picks one)</span><div class="chips" id="o-keys"></div></div>
+  <div class="row"><span class="lbl">Chords come</span><div class="chips" id="o-mode"></div>
+    <p class="hint">Progressions: each line is a common progression (like I–V–vi–IV) in smooth inversions, the way your hands move in real songs.</p></div>
+  <div class="row"><span class="lbl">Chords</span><div class="chips" id="o-degs"></div></div>
+  <div class="row"><span class="lbl">Inversions</span><div class="chips" id="o-inv"></div></div>
+  <div class="row"><span class="lbl">Clef</span><div class="chips" id="o-clef"></div></div>
+  <div class="row"><span class="lbl">Notes must be</span><div class="chips" id="o-exact"></div>
+    <p class="hint">Exact means the same notes and octave as written. Any octave accepts the right three notes anywhere.</p></div>
+  <div class="row"><span class="lbl">Round</span><div class="chips" id="o-dur"></div></div>
+  <div class="actions"><button class="primary" id="o-done">Done</button></div>
+</div></div>
+
+<div class="overlay" id="session" hidden><div class="card">
+  <h2>Practice session</h2>
+  <p class="hint" id="s-hint">Records every note you play (timing, loudness, pedal) until you press Stop, including Chord Sprint rounds. It keeps recording while you read music in the Music screen; just keep the iPad awake and this app open. Afterwards, tap Share on the session and send the file to Claude.</p>
+  <div><button class="primary big-btn" id="s-toggle">Start recording</button><span class="recnow" id="s-now"></span></div>
+  <div id="s-list"></div>
+  <div class="actions"><button id="s-done">Done</button></div>
+</div></div>
+
+<div class="overlay" id="history" hidden><div class="card hist">
+  <h2>History</h2>
+  <div id="h-body"></div>
+  <div class="actions"><button class="primary" id="h-done">Done</button></div>
+</div></div>
+
+<div class="overlay" id="results" hidden><div class="card">
+  <h2 id="r-title">Time!</h2>
+  <div class="res"><div><b id="r-score">0</b>chords</div><div><b id="r-avg">0</b>sec each</div><div><b id="r-acc">0</b>first try</div></div>
+  <p class="hint" id="r-best"></p>
+  <div id="r-slowwrap"><span class="lbl">Slowest this round (they'll come up more)</span><div class="slow" id="r-slow"></div></div>
+  <div class="actions"><button id="r-hist">History</button><button id="r-settings">Settings</button><button class="primary" id="r-again">Play again</button></div>
+</div></div>
+
+<script src="sprint.js"></script>
+</body></html>

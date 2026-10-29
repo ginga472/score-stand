@@ -166,21 +166,35 @@ async function pull(uid) {
     }
   }
 
-  // Download PDFs for scores added on another device.
+  // Download PDFs for scores added on another device, plus any an earlier sync failed to save.
+  for (const s of await db.getAll('scores')) {
+    if (!needFiles.includes(s.id) && !(await db.get('files', s.id))) needFiles.push(s.id);
+  }
+  let failed = 0;
   for (const id of needFiles) {
-    const res = await api(`/storage/v1/object/authenticated/scores/${pdfPath(uid, id)}`, { raw: true });
-    const blob = new Blob([await res.arrayBuffer()], { type: 'application/pdf' });
-    await db.put('files', { id, blob });
-    await db.setMeta(`up:${id}`, true);
-    const score = await db.get('scores', id);
-    if (score) {
-      const pdf = await loadPdf(blob);
-      score.thumb = await makeThumb(pdf);
-      pdf.loadingTask.destroy();
-      await db.put('scores', score, { remote: true });
+    try {
+      await downloadFile(uid, id);
+    } catch (err) {
+      console.warn('PDF download failed', id, err);
+      failed++;
     }
   }
+  if (failed) throw new Error(`${failed} score${failed > 1 ? 's' : ''} couldn't be downloaded; will retry.`);
   return applied;
+}
+
+async function downloadFile(uid, id) {
+  const res = await api(`/storage/v1/object/authenticated/scores/${pdfPath(uid, id)}`, { raw: true });
+  const blob = new Blob([await res.arrayBuffer()], { type: 'application/pdf' });
+  await db.put('files', { id, blob });
+  await db.setMeta(`up:${id}`, true);
+  const score = await db.get('scores', id);
+  if (score) {
+    const pdf = await loadPdf(blob);
+    score.thumb = await makeThumb(pdf);
+    pdf.loadingTask.destroy();
+    await db.put('scores', score, { remote: true });
+  }
 }
 
 // ---------- push ----------

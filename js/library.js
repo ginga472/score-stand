@@ -3,6 +3,7 @@ import * as db from './db.js';
 import { loadPdf, makeThumb } from './pdf.js';
 import { el, clear, fill, promptForm, confirmBox, toast } from './ui.js';
 import * as sync from './sync.js';
+import * as native from './native.js';
 
 const MAX_PDF_BYTES = 80 * 1024 * 1024;
 let tab = 'scores';
@@ -58,12 +59,14 @@ export async function renderLibrary(root, go) {
   showStatus(sync.getStatus());
   const offStatus = sync.onStatus(showStatus);
 
+  const importBtn = el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF');
+  // Inside the iPad app the top bar switches screens; scores get their own import row.
+  const app = native.inApp ? native.appBar(el, 'music', go) : null;
+
   const view = el('div', { class: 'library' },
     el('header', { class: 'lib-head' },
-      el('h1', { text: 'Score Stand' }),
-      el('div', { class: 'row' },
-        syncBtn,
-        el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF')),
+      app ? app.bar : el('h1', { text: 'Score Stand' }),
+      el('div', { class: 'row' }, syncBtn, app ? null : importBtn),
       fileInput),
     tabBar,
     body);
@@ -101,7 +104,7 @@ export async function renderLibrary(root, go) {
 
     if (stale(seq)) return;
     fill(body,
-      search,
+      el('div', { class: 'row toolbar' }, search, native.inApp ? importBtn : null),
       scores.length ? null : el('div', { class: 'empty' },
         el('p', { text: 'No scores yet.' }),
         el('p', { class: 'muted', text: 'Tap "Import PDF", or on the Mac drag PDFs onto this window. On iPad you can also pick files straight from iCloud Drive.' })),
@@ -256,7 +259,7 @@ export async function renderLibrary(root, go) {
   // Redraw when another device's changes arrive; stop listening once we leave.
   const redraw = () => { if (root.contains(view)) draw(); else sync.offRemoteChange(redraw); };
   sync.onRemoteChange(redraw);
-  root._cleanup = () => { offStatus(); sync.offRemoteChange(redraw); };
+  root._cleanup = () => { app?.off(); offStatus(); sync.offRemoteChange(redraw); };
 
   draw();
 }

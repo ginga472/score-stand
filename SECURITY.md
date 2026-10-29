@@ -30,3 +30,13 @@ Before syncing goes live:
 - [ ] CSP `connect-src` widened to the single Supabase project URL only.
 - [ ] `supabase/check-security.sh` passes (anonymous reads, writes, bucket listing and sign-up all refused).
 - [ ] Dependabot or manual check on vendored library versions.
+
+## iPad app (`ios/`)
+
+The iPad app bundles these same files and adds two things a web page can't do: reading the piano over USB MIDI, and recording practice sessions.
+
+- **Nothing loads remotely.** A build step copies the web files into the app, and a custom `app://local/` scheme serves them from the bundle only (paths outside the bundled `web` folder get a 404). The page CSPs apply unchanged; the only network traffic is still Supabase sync.
+- **Navigation is locked to the bundled pages.** Any other URL is refused; tapped `https` links open in Safari instead of inside the app.
+- **Small native bridge.** Pages can only send three messages: `nav` (switch screen; an optional route must be a plain `#/path`), `session` (start/stop/list/share/delete recordings, add a marker) and `store` (Chord Sprint settings as a JSON string). Session files are looked up by name inside the app's `Sessions` folder only.
+- **Recordings stay on the iPad** (Documents/Sessions, visible in the Files app) until shared by hand. They hold note numbers, timing, velocity, pedal and screen markers (score title and page), nothing else.
+- Chord Sprint (`chord-sprint/`) has its own strict CSP (no inline script or style). It builds its staff SVG with `innerHTML` from internal data only; no user-entered text reaches it.
