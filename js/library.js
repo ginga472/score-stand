@@ -45,7 +45,6 @@ export async function renderLibrary(root, go) {
   }
 
   const tabs = [['scores', 'Scores'], ['setlists', 'Setlists'], ['spots', 'Spots']];
-  if (native.inApp) tabs.push(['sessions', 'Sessions']);
   const body = el('section', { class: 'lib-body' });
   const tabBar = el('nav', { class: 'tabs' }, tabs.map(([id, label]) =>
     el('button', { class: 'tab', dataset: { tab: id }, onclick: () => { tab = id; draw(); } }, label)));
@@ -60,24 +59,14 @@ export async function renderLibrary(root, go) {
   showStatus(sync.getStatus());
   const offStatus = sync.onStatus(showStatus);
 
-  // Inside the iPad app: record a practice session, and jump to Chord Sprint.
-  const recBtn = el('button', { class: 'ghost rec-btn', hidden: !native.inApp,
-    onclick: () => (native.recording().recording ? native.stopRecording() : native.startRecording()) });
-  const showRec = (st) => {
-    recBtn.textContent = st.recording ? '■ Stop recording' : '● Record session';
-    recBtn.classList.toggle('on', st.recording);
-  };
-  showRec(native.recording());
-  const offRec = native.onRecording((st) => { showRec(st); if (tab === 'sessions') draw(); });
+  const importBtn = el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF');
+  // Inside the iPad app the top bar switches screens; scores get their own import row.
+  const app = native.inApp ? native.appBar(el, 'music', go) : null;
 
   const view = el('div', { class: 'library' },
     el('header', { class: 'lib-head' },
-      el('h1', { text: native.inApp ? 'Music' : 'Score Stand' }),
-      el('div', { class: 'row' },
-        recBtn,
-        native.inApp && el('button', { class: 'ghost', onclick: native.openChordSprint }, 'Chord Sprint ›'),
-        syncBtn,
-        el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF')),
+      app ? app.bar : el('h1', { text: 'Score Stand' }),
+      el('div', { class: 'row' }, syncBtn, app ? null : importBtn),
       fileInput),
     tabBar,
     body);
@@ -100,8 +89,7 @@ export async function renderLibrary(root, go) {
     for (const b of tabBar.children) b.classList.toggle('on', b.dataset.tab === tab);
     if (tab === 'scores') await drawScores(seq);
     else if (tab === 'setlists') await drawSetlists(seq);
-    else if (tab === 'spots') await drawSpots(seq);
-    else drawSessions();
+    else await drawSpots(seq);
   }
 
   async function drawScores(seq = ++drawSeq) {
@@ -116,7 +104,7 @@ export async function renderLibrary(root, go) {
 
     if (stale(seq)) return;
     fill(body,
-      search,
+      el('div', { class: 'row toolbar' }, search, native.inApp ? importBtn : null),
       scores.length ? null : el('div', { class: 'empty' },
         el('p', { text: 'No scores yet.' }),
         el('p', { class: 'muted', text: 'Tap "Import PDF", or on the Mac drag PDFs onto this window. On iPad you can also pick files straight from iCloud Drive.' })),
@@ -242,48 +230,6 @@ export async function renderLibrary(root, go) {
                 sp.goal ? el('div', { class: 'goal', text: sp.goal }) : null)))))));
   }
 
-  // Practice recordings live in the app's Documents/Sessions folder; the app sends the list.
-  let delArm = null;
-  let tick;
-  function drawSessions() {
-    clearInterval(tick);
-    const st = native.recording();
-    const clock = (ms) => { const s = Math.round(ms / 1000); return s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-    const now = el('strong', { class: 'rec-clock' });
-    if (st.recording) {
-      const upd = () => { if (!root.contains(now)) return clearInterval(tick); now.textContent = clock(Date.now() - st.startedMs); };
-      upd();
-      tick = setInterval(upd, 1000);
-    }
-    const when = (ms) => new Date(ms).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    fill(body,
-      el('article', { class: 'setlist rec-panel' + (st.recording ? ' live' : '') },
-        el('div', { class: 'row between' },
-          st.recording
-            ? el('div', {}, el('span', { class: 'rec-dot' }), el('span', { text: ' Recording ' }), now)
-            : el('p', { class: 'muted', text: 'Records every note you play on the piano, on any screen, until you stop. Stops by itself after 20 quiet minutes.' }),
-          st.recording
-            ? el('button', { class: 'danger', onclick: native.stopRecording }, '■ Stop & save')
-            : el('button', { class: 'primary', onclick: native.startRecording }, '● Start recording'))),
-      st.sessions.length ? null : el('p', { class: 'empty muted', text: 'No saved sessions yet.' }),
-      st.sessions.length ? el('p', { class: 'muted', text: 'Share a session to the Claude app to get a practice summary. They are also in the Files app under On My iPad › Woodshed › Sessions.' }) : null,
-      el('ul', { class: 'session-list' }, st.sessions.map((x) => {
-        const active = x.durationMs ? Math.round((100 * x.playingMs) / x.durationMs) : 0;
-        const what = [...(x.pieces || [])];
-        if (x.sprintRounds) what.push(`Chord Sprint × ${x.sprintRounds}`);
-        return el('li', { class: 'setlist session' },
-          el('div', { class: 'session-meta' },
-            el('strong', { text: when(x.started) }),
-            el('span', { class: 'muted', text: `${clock(x.durationMs)} long · ${clock(x.playingMs)} playing (${active}%) · ${x.notes} notes` }),
-            what.length ? el('div', { class: 'tags' }, what.map((t) => el('span', { class: 'tag', text: t }))) : null),
-          el('div', { class: 'row' },
-            el('button', { class: 'ghost small', onclick: () => native.shareSession(x.name) }, 'Share'),
-            el('button', { class: 'ghost small' + (delArm === x.name ? ' warn' : ''), onclick: () => {
-              if (delArm === x.name) { delArm = null; native.deleteSession(x.name); } else { delArm = x.name; drawSessions(); }
-            } }, delArm === x.name ? 'Tap to confirm' : 'Delete')));
-      })));
-  }
-
   async function accountDialog() {
     const user = await sync.currentUser();
     if (!user) return signIn();
@@ -313,7 +259,7 @@ export async function renderLibrary(root, go) {
   // Redraw when another device's changes arrive; stop listening once we leave.
   const redraw = () => { if (root.contains(view)) draw(); else sync.offRemoteChange(redraw); };
   sync.onRemoteChange(redraw);
-  root._cleanup = () => { clearInterval(tick); offStatus(); offRec(); sync.offRemoteChange(redraw); };
+  root._cleanup = () => { app?.off(); offStatus(); sync.offRemoteChange(redraw); };
 
   draw();
 }

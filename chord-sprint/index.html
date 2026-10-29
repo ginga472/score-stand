@@ -9,14 +9,15 @@
 </head><body>
 <div class="app">
   <header>
-    <button id="musicbtn" hidden>‹ Music</button>
-    <h1>Chord Sprint</h1>
+    <nav class="switch" id="appnav" aria-label="Screens" hidden><button data-go="music">Music</button><button class="on" aria-current="page">Chord Sprint</button><button data-go="sessions">Sessions</button></nav>
+    <h1 id="title">Chord Sprint</h1>
     <div class="dev" id="dev"><span class="dot" id="dot"></span><span id="devname">No piano</span></div>
     <div class="status" id="status"></div>
     <div class="stat"><span class="big" id="time">60</span><span class="lbl" id="timelbl">sec</span></div>
     <div class="stat"><span class="big" id="score">0</span><span class="lbl">chords</span></div>
     <button class="rec" id="rec" hidden><i></i><span id="rectext">0:00</span></button>
     <button id="sessbtn">Session</button>
+    <button class="apprec" id="apprec" hidden>● Record</button>
     <button id="histbtn">History</button>
     <button id="gear" aria-label="Settings">Settings</button>
   </header>

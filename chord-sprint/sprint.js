@@ -281,7 +281,7 @@ window.sessionState=function(st){
   if(st.event==="started"){R.notes=0;R.last=Date.now()}
   R.on=!!st.recording;R.startMs=st.startedMs||0;if(st.sessions)R.sessions=st.sessions;drawSession()};
 function drawSession(){
-  $("rec").hidden=!R.on||IN_APP;$("sessbtn").hidden=R.on&&!IN_APP;
+  $("rec").hidden=!R.on||IN_APP;$("sessbtn").hidden=R.on||IN_APP;$("apprec").hidden=R.on||!IN_APP;
   $("rectext").textContent=R.on?clock(Date.now()-R.startMs)+" · "+R.notes+" notes":"";
   const t=$("s-toggle");t.textContent=R.on?"Stop & save":"Start recording";t.className=R.on?"big-btn stop":"primary big-btn";$("s-now").textContent=R.on?"Recording · "+clock(Date.now()-R.startMs)+" · "+R.notes+" notes":"";t.disabled=!hasNative();
   if(!hasNative())$("s-hint").textContent="Recording works in the iPad app.";
@@ -299,5 +299,9 @@ setInterval(()=>{if(!R.on)return;
   if(Date.now()-R.last>20*60e3){nat("marker",{k:"auto_stop_silence"});nat("stop");return} // 20 quiet minutes ends the session
   $("rectext").textContent=clock(Date.now()-R.startMs)+" · "+R.notes+" notes";
   $("s-now").textContent="Recording · "+$("rectext").textContent},1000);
-if(IN_APP){$("musicbtn").hidden=false;$("musicbtn").onclick=()=>{try{window.webkit.messageHandlers.nav.postMessage({to:"music"})}catch(e){}}}
+// In the app, the same screen switcher as Music; recordings are listed on the Sessions screen.
+if(IN_APP){$("appnav").hidden=false;$("title").hidden=true;$("sessbtn").hidden=true;$("apprec").hidden=false;
+  $("appnav").querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{
+    try{window.webkit.messageHandlers.nav.postMessage({to:"music",route:b.dataset.go==="sessions"?"#/sessions":"#/"})}catch(e){}});
+  $("apprec").onclick=()=>{R.last=Date.now();nat("start")}}
 reset();

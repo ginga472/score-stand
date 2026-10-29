@@ -1,7 +1,9 @@
-// Hash router: #/ (library), #/score/<id>[/<page>], #/setlist/<id>
+// Hash router: #/ (library), #/score/<id>[/<page>], #/setlist/<id>, #/sessions (iPad app)
 import * as db from './db.js';
 import { renderLibrary } from './library.js';
 import { openReader } from './reader.js';
+import { renderSessions } from './sessions.js';
+import { inApp } from './native.js';
 import * as sync from './sync.js';
 
 const root = document.getElementById('app');
@@ -22,6 +24,8 @@ async function route() {
       const list = await db.get('setlists', parts[1]);
       if (!list) return go('#/');
       cleanup = await openReader(root, { scoreIds: list.scoreIds, startPage: 1, title: list.name, onExit });
+    } else if (parts[0] === 'sessions' && inApp) {
+      renderSessions(root, go);
     } else {
       await renderLibrary(root, go);
     }

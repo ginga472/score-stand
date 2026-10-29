@@ -147,7 +147,13 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         case "store":
             if let body = message.body as? String { UserDefaults.standard.set(body, forKey: Self.storeKey) }
         case "nav":
-            if let to = (message.body as? [String: Any])?["to"] as? String, let next = Screen(rawValue: to) { show(next) }
+            guard let body = message.body as? [String: Any], let to = body["to"] as? String, let next = Screen(rawValue: to) else { break }
+            // Optional page inside the Music screen, e.g. "#/sessions". Only plain hash paths are accepted.
+            if next == .music, let route = body["route"] as? String,
+               route.range(of: "^#/[A-Za-z0-9/_-]*$", options: .regularExpression) != nil {
+                music.evaluateJavaScript("location.hash = \(Self.json(route));", completionHandler: nil)
+            }
+            show(next)
         case "session":
             if let body = message.body as? [String: Any] { handleSession(body) }
         default:
@@ -241,7 +247,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
 
     @objc private func pillTapped() {
         let alert = UIAlertController(title: "Stop recording?",
-                                      message: "The session is saved and listed under Music › Sessions, where you can share it.",
+                                      message: "The session is saved and listed under Sessions, where you can share it.",
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Keep recording", style: .cancel))
         alert.addAction(UIAlertAction(title: "Stop & save", style: .default) { [weak self] _ in
