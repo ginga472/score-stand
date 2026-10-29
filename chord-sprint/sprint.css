@@ -82,3 +82,10 @@ th{color:var(--muted);font-weight:500;font-size:.8rem;text-transform:uppercase;l
 td button{min-height:36px;padding:4px 10px;font-size:.85rem}
 @keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 .shake{animation:shake .18s 2}
+header h1,header button{white-space:nowrap}
+/* Portrait iPad: the status line drops below the header buttons. */
+@media (max-width:900px){
+  header{flex-wrap:wrap;row-gap:2px}
+  .status{order:10;flex-basis:100%;min-height:1.4em}
+  #devname{display:none}
+}
