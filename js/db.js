@@ -55,8 +55,27 @@ async function store(name, mode = 'readonly') {
 
 export const uid = () => crypto.randomUUID();
 
-export async function getAll(name) { return wrap((await store(name)).getAll()); }
-export async function get(name, key) { return wrap((await store(name)).get(key)); }
+// Safari sometimes refuses to store Blobs in IndexedDB ("Error preparing Blob/File data to be
+// stored in object store"), so Blob fields (PDF bytes, thumbnails) are stored as ArrayBuffers and
+// turned back into Blobs on read. Rows saved as Blobs by older versions still read fine.
+async function encode(value) {
+  if (!value || typeof value !== 'object') return value;
+  const out = { ...value };
+  for (const [k, v] of Object.entries(value)) {
+    if (v instanceof Blob) out[k] = { __blob: await v.arrayBuffer(), type: v.type };
+  }
+  return out;
+}
+function decode(value) {
+  if (!value || typeof value !== 'object') return value;
+  for (const [k, v] of Object.entries(value)) {
+    if (v && v.__blob instanceof ArrayBuffer) value[k] = new Blob([v.__blob], { type: v.type });
+  }
+  return value;
+}
+
+export async function getAll(name) { return (await wrap((await store(name)).getAll())).map(decode); }
+export async function get(name, key) { return decode(await wrap((await store(name)).get(key))); }
 
 // Listeners are told when a synced store changes locally (sync.js schedules an upload).
 const listeners = new Set();
@@ -71,7 +90,8 @@ async function enqueue(name, id, op) {
 export async function put(name, value, { remote = false } = {}) {
   const synced = SYNCED.includes(name);
   if (synced && !remote) value.updatedAt = Date.now();
-  await wrap((await store(name, 'readwrite')).put(value));
+  const stored = await encode(value);
+  await wrap((await store(name, 'readwrite')).put(stored));
   if (synced && !remote) await enqueue(name, keyOf(name, value), 'put');
 }
 

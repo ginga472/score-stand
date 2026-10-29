@@ -13,7 +13,7 @@ const ROMAN=["I","II","III","IV","V","VI","VII"],INV_NAME=["root position","1st 
 const CLEF={treble:{bottom:30,lo:28,hi:40,mid:34},bass:{bottom:18,lo:16,hi:28,mid:22}};
 
 // ---------- settings + stats (saved through the iPad app, or localStorage in a browser) ----------
-const DEF={keys:["C"],degs:[0,1,2,3,4,5],inv:true,clef:"both",exact:true,dur:60,stats:{},best:{},history:[]};
+const DEF={mode:"random",keys:["C"],degs:[0,1,2,3,4,5],inv:true,clef:"both",exact:true,dur:60,stats:{},best:{},history:[]};
 function load(){let o=null;
   try{if(typeof window.__nativeStore==="string"&&window.__nativeStore)o=JSON.parse(window.__nativeStore)}catch(e){}
   if(!o)try{o=JSON.parse(localStorage.getItem("chordSprint")||"null")}catch(e){}
@@ -50,9 +50,25 @@ function weight(c){const st=S.stats[statKey(c)];if(!st)return 2;
   return 1+4*(st.miss/st.n)+Math.min(4,Math.max(0,st.t-1.5))}
 
 // ---------- game ----------
-const G={lines:[],cur:0,held:new Set(),phase:"ready",start:0,end:0,score:0,clean:0,chordAt:0,log:[],last:null,raf:0};
+const G={lines:[],cur:0,held:new Set(),stale:new Set(),pausing:false,phase:"ready",start:0,end:0,score:0,clean:0,chordAt:0,log:[],last:null,raf:0};
 function pickKey(){const ks=KEYS.filter(k=>S.keys.includes(k.name));return ks[Math.floor(Math.random()*ks.length)]||KEYS[0]}
+// Progression mode: each line is one common progression, voiced the way hands move (nearest inversion).
+const PROGS=[["I–V–vi–IV",[0,4,5,3]],["I–IV–V–I",[0,3,4,0]],["vi–IV–I–V",[5,3,0,4]],["I–vi–IV–V",[0,5,3,4]],["ii–V–I–vi",[1,4,0,5]],["I–IV–vi–V",[0,3,5,4]]];
+function progressionLine(key){
+  const [label,degs]=PROGS[Math.floor(Math.random()*PROGS.length)];
+  const clef=S.clef==="both"?(Math.random()<.6?"bass":"treble"):S.clef,invs=S.inv?[0,1,2]:[0];
+  const chords=[];
+  degs.forEach((deg,i)=>{
+    const cands=invs.map(inv=>triad(key,deg,inv,clef));
+    let pick;
+    if(!i)pick=cands[Math.floor(Math.random()*cands.length)];
+    else{const prev=chords[i-1].midis,cost=c=>c.midis.reduce((t,m,j)=>t+Math.abs(m-prev[j]),0);
+      pick=cands.slice().sort((a,b)=>cost(a)-cost(b))[0]}
+    chords.push(Object.assign({},pick,{notes:pick.notes.map(n=>({...n}))}))});
+  G.last=chords[3];
+  return{key,chords,label}}
 function newLine(){
+  if(S.mode==="prog")return progressionLine(pickKey());
   const key=pickKey(),chords=[];
   const clefs=S.clef==="both"?["bass","treble"]:[S.clef],invs=S.inv?[0,1,2]:[0];
   const pool=[];
@@ -68,6 +84,7 @@ function newLine(){
   G.last=chords[3];
   return{key,chords}}
 function reset(){
+  G.rid=(G.rid||0)+1;G.pausing=false;G.stale.clear();
   G.lines=[newLine(),newLine()];G.cur=0;G.phase="ready";G.score=0;G.clean=0;G.log=[];G.held.clear();
   G.lines[0].chords[0].state="cur";
   cancelAnimationFrame(G.raf);tick();render()}
@@ -77,14 +94,16 @@ function noteOn(m){
   if(R.on){R.notes++;R.last=Date.now()}
   if(!$("session").hidden)return;
   if(!$("settings").hidden||!$("results").hidden||!$("history").hidden)return;
-  G.held.add(m);
+  G.held.add(m);G.stale.delete(m);
   if(G.phase==="ready")beginRound();
-  if(G.phase!=="play")return;
+  if(G.phase!=="play"||G.pausing)return;
   evaluate();render()}
-function noteOff(m){G.held.delete(m);if(G.phase!=="over")render()}
+function noteOff(m){G.held.delete(m);G.stale.delete(m);if(G.phase!=="over")render()}
+// Keys still held from the chord just finished don't count toward the next one until re-pressed.
+const live=()=>[...G.held].filter(m=>!G.stale.has(m));
 function evaluate(){
-  const c=curChord(),held=[...G.held];let wrong,ok;
-  if(S.exact){wrong=held.some(m=>!c.midis.includes(m));ok=!wrong&&c.midis.every(m=>G.held.has(m))}
+  const c=curChord(),held=live(),hs=new Set(held);let wrong,ok;
+  if(S.exact){wrong=held.some(m=>!c.midis.includes(m));ok=!wrong&&c.midis.every(m=>hs.has(m))}
   else{const pcs=new Set(c.midis.map(m=>m%12));wrong=held.some(m=>!pcs.has(m%12));ok=!wrong&&[...pcs].every(p=>held.some(m=>m%12===p))}
   if(wrong&&!c.missed){c.missed=true;const s=$("sheet");s.classList.remove("shake");void s.offsetWidth;s.classList.add("shake")}
   if(ok)complete(false)}
@@ -99,34 +118,40 @@ function complete(skipped){
   G.log.push({c,t,skipped});
   const k=statKey(c),st=S.stats[k]||{n:0,miss:0,t};
   st.n++;st.miss+=c.missed?1:0;st.t=st.n===1?t:.7*st.t+.3*t;S.stats[k]=st;
-  G.chordAt=now;G.cur++;
-  if(G.cur>=4){G.lines=[G.lines[1],newLine()];G.cur=0}
-  curChord().state="cur";
-  render()}
+  G.chordAt=now;G.cur++;G.stale=new Set(G.held);
+  if(G.cur<4){curChord().state="cur";render();return}
+  // Hold the finished line on screen for a moment so the last chord's result is visible.
+  G.pausing=true;render();
+  const rid=G.rid;
+  setTimeout(()=>{
+    if(G.rid!==rid)return;
+    G.pausing=false;if(G.phase!=="play")return;
+    G.lines=[G.lines[1],newLine()];G.cur=0;curChord().state="cur";
+    G.stale=new Set(G.held);G.chordAt=performance.now();render()},800)}
 function tick(){
   cancelAnimationFrame(G.raf);
   let left=S.dur;
   if(G.phase==="play"&&S.dur){left=Math.max(0,(G.end-performance.now())/1000);if(left<=0){finish();return}}
-  $("time").textContent=S.dur?Math.ceil(left):"∞";
+  $("time").textContent=S.dur?Math.ceil(left):"–";$("timelbl").textContent=S.dur?"sec":"practice";
   $("timebar").style.transform="scaleX("+(S.dur?left/S.dur:1)+")";
   if(G.phase==="play")G.raf=requestAnimationFrame(tick)}
 function finish(){
   if(G.phase==="play")nat("marker",{k:"round_end",score:G.score,clean:G.clean});
-  G.phase="over";cancelAnimationFrame(G.raf);$("time").textContent=S.dur?"0":"∞";$("timebar").style.transform="scaleX(0)";save();
+  G.phase="over";cancelAnimationFrame(G.raf);$("time").textContent=S.dur?"0":"–";$("timebar").style.transform="scaleX(0)";save();
   const done=G.log.filter(l=>!l.skipped);
   const elapsed=((S.dur?S.dur*1000:performance.now()-G.start)/1000);
-  $("r-title").textContent=S.dur?"Time!":"Round finished";
+  $("r-title").textContent=S.dur?"Time!":"Practice finished";
   $("r-score").textContent=G.score;
   $("r-avg").textContent=G.score?(elapsed/G.score).toFixed(1):"–";
   $("r-acc").textContent=G.score?Math.round(100*G.clean/G.score)+"%":"–";
-  const bk=[S.keys.slice().sort().join(""),S.degs.join(""),S.inv,S.clef,S.exact,S.dur].join("|");
+  const bk=[S.mode,S.keys.slice().sort().join(""),S.mode==="prog"?"":S.degs.join(""),S.inv,S.clef,S.exact,S.dur].join("|");
   const prev=S.best[bk];
-  if(G.score)S.history.push({t:Date.now(),n:G.score,spc:+(elapsed/G.score).toFixed(2),acc:+(G.clean/G.score).toFixed(2),
-    dur:S.dur,keys:S.keys.slice(),clef:S.clef,inv:S.inv,exact:S.exact});
+  if(G.score&&S.dur)S.history.push({t:Date.now(),n:G.score,spc:+(elapsed/G.score).toFixed(2),acc:+(G.clean/G.score).toFixed(2),
+    dur:S.dur,mode:S.mode,keys:S.keys.slice(),clef:S.clef,inv:S.inv,exact:S.exact});
   if(S.history.length>3000)S.history=S.history.slice(-3000);
   if(S.dur){if(!prev||G.score>prev)S.best[bk]=G.score;
     $("r-best").textContent=!prev?"First round with these settings.":G.score>prev?"New best! Previous best was "+prev+".":"Best with these settings: "+prev+"."}
-  else $("r-best").textContent="";
+  else $("r-best").textContent="Practice rounds don't count toward your history or best scores. Slow chords still come up more often.";
   save();
   const seen=new Set(),slow=G.log.slice().sort((a,b)=>(b.skipped-a.skipped)||(b.c.missed-a.c.missed)||(b.t-a.t))
     .filter(l=>{const k=statKey(l.c);if(seen.has(k))return false;seen.add(k);return true}).slice(0,3);
@@ -157,13 +182,14 @@ function systemSVG(line,isCur){
   line.chords.forEach((c,i)=>{
     const x=X0+i*BW+BW/2,cls=c.state==="ok"?"ok":(i===c0?"":"");
     s+='<g class="'+cls+'">';
-    c.notes.forEach(n=>{const held=i===c0&&G.held.has(n.m)||(i===c0&&!S.exact&&[...G.held].some(m=>m%12===n.m%12));
+    const lv=i===c0?live():[];
+    c.notes.forEach(n=>{const held=lv.includes(n.m)||(!S.exact&&lv.some(m=>m%12===n.m%12));
       s+='<g class="'+(held?"held":"")+'">'+ledgers(c.clef,n.d,x)+head(x,yOf(c.clef,n.d))+'</g>'});
     s+='</g>';
     if(c.state==="ok"||c.state==="skipped")s+='<text class="'+(c.state==="skipped"?"name skip":"name")+'" x="'+x+'" y="'+(BT+48+46)+'"'+'>'+c.name+'</text><text class="roman" x="'+x+'" y="'+(BT+48+68)+'">'+c.roman+'</text>';
     if(i===c0){ // wrong notes currently held, drawn just right of the chord
       const tgt=S.exact?new Set(c.midis):null,pcs=new Set(c.midis.map(m=>m%12));
-      [...G.held].filter(m=>S.exact?!tgt.has(m):!pcs.has(m%12)).forEach(m=>{
+      lv.filter(m=>S.exact?!tgt.has(m):!pcs.has(m%12)).forEach(m=>{
         const sp=spell(m,line.key),C=CLEF[c.clef];
         const clef=(sp.d>=C.lo-5&&sp.d<=C.hi+5)?c.clef:(m>=60?"treble":"bass"),wx=x+36,y=yOf(clef,sp.d);
         s+='<g class="wrong">'+ledgers(clef,sp.d,wx,"")+head(wx,y)+(sp.a!==keyAcc(line.key,((sp.d%7)+7)%7)?'<text class="acc" x="'+(wx+20)+'" y="'+(y+(sp.a<0?4:7))+'" font-size="24" text-anchor="middle">'+ACC[sp.a]+'</text>':'')+'</g>'})}
@@ -185,9 +211,9 @@ function render(){
   $("sheet").innerHTML=systemSVG(G.lines[0],true)+systemSVG(G.lines[1],false);
   $("score").textContent=G.score;
   const k=G.lines[0].key;
-  $("keyline").textContent=k.name+" major"+(k.sig?" · "+Math.abs(k.sig)+(k.sig>0?" sharp":" flat")+(Math.abs(k.sig)>1?"s":""):"")+" · "+(S.exact?"exact notes":"any octave");
-  $("status").innerHTML=G.phase==="ready"?(midiReady?"<b>Play the first chord to start the clock</b>":"<b>Plug in the piano to start</b>"):
-    G.phase==="play"&&!S.dur?"Untimed":"";
+  $("keyline").textContent=k.name+" major"+(k.sig?" · "+Math.abs(k.sig)+(k.sig>0?" sharp":" flat")+(Math.abs(k.sig)>1?"s":""):"")+(G.lines[0].label?" · "+G.lines[0].label:"")+" · "+(S.exact?"exact notes":"any octave");
+  $("status").innerHTML=G.phase==="ready"?(midiReady?(S.dur?"<b>Play the first chord to start the clock</b>":"<b>Say each chord's name, then play it</b>"):"<b>Plug in the piano to start</b>"):
+    G.phase==="play"&&!S.dur?"Say each chord's name, then play it":"";
   $("finish").hidden=!(G.phase==="play"&&!S.dur);
 }
 
@@ -214,7 +240,9 @@ function drawSettings(){
   chips("o-inv",[["0","Root position only"],["1","All inversions"]],v=>S.inv===(v==="1"),v=>S.inv=v==="1");
   chips("o-clef",[["bass","Bass"],["both","Both"],["treble","Treble"]],v=>S.clef===v,v=>S.clef=v);
   chips("o-exact",[["1","Exact octave"],["0","Any octave"]],v=>S.exact===(v==="1"),v=>S.exact=v==="1");
-  chips("o-dur",[["60","1 minute"],["120","2 minutes"],["0","Untimed"]],v=>S.dur===+v,v=>S.dur=+v)}
+  chips("o-dur",[["60","1 minute"],["120","2 minutes"],["0","Practice (no clock)"]],v=>S.dur===+v,v=>S.dur=+v);
+  chips("o-mode",[["random","Random chords"],["prog","Progressions"]],v=>S.mode===v,v=>S.mode=v);
+  $("o-degs").closest(".row").hidden=S.mode==="prog"}
 $("finish").onclick=()=>finish();
 $("gear").onclick=()=>{drawSettings();$("settings").hidden=false};
 $("o-done").onclick=()=>{$("settings").hidden=true;S.degs.sort();save();reset()};
@@ -223,7 +251,7 @@ $("histbtn").onclick=()=>{if(G.phase==="play")return;drawHistory();$("history").
 $("r-hist").onclick=()=>{$("results").hidden=true;drawHistory();$("history").hidden=false};
 $("h-done").onclick=()=>{$("history").hidden=true;if(G.phase==="over")reset()};
 function drawHistory(){
-  const H=S.history||[];
+  const H=(S.history||[]).filter(r=>r.dur);
   if(!H.length){$("h-body").innerHTML='<p class="hint">No rounds yet. Finish a round and it shows up here.</p>';return}
   // daily summary: average seconds per chord and total chords, last 30 practice days
   const days=new Map();H.forEach(r=>{const d=new Date(r.t),k=d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
@@ -237,12 +265,12 @@ function drawHistory(){
   if(ds.length>1)svg+='<text class="ax" x="'+x(ds.length-1)+'" y="'+(h-10)+'" text-anchor="end">'+fmt(ds[ds.length-1].date)+'</text>';
   svg+='<polyline points="'+ys.map((v,i)=>x(i)+","+y(v)).join(" ")+'"/>'+ys.map((v,i)=>'<circle cx="'+x(i)+'" cy="'+y(v)+'" r="4"/>').join("")+'</svg>';
   const rows=H.slice(-25).reverse().map(r=>{const d=new Date(r.t);
-    return '<tr><td>'+fmt(d)+' '+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})+'</td><td>'+r.n+'</td><td>'+r.spc.toFixed(1)+'s</td><td>'+Math.round(r.acc*100)+'%</td><td>'+r.keys.join(" ")+' · '+r.clef+(r.inv?"":" · root only")+(r.exact?"":" · any 8ve")+' · '+(r.dur?r.dur/60+" min":"untimed")+'</td></tr>'}).join("");
+    return '<tr><td>'+fmt(d)+' '+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})+'</td><td>'+r.n+'</td><td>'+r.spc.toFixed(1)+'s</td><td>'+Math.round(r.acc*100)+'%</td><td>'+(r.mode==="prog"?"progressions · ":"")+r.keys.join(" ")+' · '+r.clef+(r.inv?"":" · root only")+(r.exact?"":" · any 8ve")+' · '+(r.dur?r.dur/60+" min":"untimed")+'</td></tr>'}).join("");
   $("h-body").innerHTML='<div class="row"><span class="lbl">Seconds per chord, by day (lower is better)</span>'+svg+'</div>'+
     '<p class="hint">'+H.length+' rounds · '+H.reduce((s,r)=>s+r.n,0)+' chords played over '+days.size+' day'+(days.size>1?"s":"")+'</p>'+
     '<table><thead><tr><th>When</th><th>Chords</th><th>Each</th><th>First try</th><th>Settings</th></tr></thead><tbody>'+rows+'</tbody></table>'}
 $("r-settings").onclick=()=>{$("results").hidden=true;drawSettings();$("settings").hidden=false};
-$("skip").onclick=()=>{if(G.phase==="ready")beginRound();
+$("skip").onclick=()=>{if(G.pausing)return;if(G.phase==="ready")beginRound();
   if(G.phase==="play")complete(true)};
 // ---------- practice session recording (handled by the iPad app; the page only shows state) ----------
 const R={on:false,startMs:0,notes:0,last:0,sessions:[],delArm:null};

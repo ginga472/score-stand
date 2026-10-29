@@ -13,7 +13,7 @@
     <h1>Chord Sprint</h1>
     <div class="dev" id="dev"><span class="dot" id="dot"></span><span id="devname">No piano</span></div>
     <div class="status" id="status"></div>
-    <div class="stat"><span class="big" id="time">60</span><span class="lbl">sec</span></div>
+    <div class="stat"><span class="big" id="time">60</span><span class="lbl" id="timelbl">sec</span></div>
     <div class="stat"><span class="big" id="score">0</span><span class="lbl">chords</span></div>
     <button class="rec" id="rec" hidden><i></i><span id="rectext">0:00</span></button>
     <button id="sessbtn">Session</button>
@@ -28,6 +28,8 @@
 <div class="overlay" id="settings" hidden><div class="card">
   <h2>Settings</h2>
   <div class="row"><span class="lbl">Keys (each line picks one)</span><div class="chips" id="o-keys"></div></div>
+  <div class="row"><span class="lbl">Chords come</span><div class="chips" id="o-mode"></div>
+    <p class="hint">Progressions: each line is a common progression (like I–V–vi–IV) in smooth inversions, the way your hands move in real songs.</p></div>
   <div class="row"><span class="lbl">Chords</span><div class="chips" id="o-degs"></div></div>
   <div class="row"><span class="lbl">Inversions</span><div class="chips" id="o-inv"></div></div>
   <div class="row"><span class="lbl">Clef</span><div class="chips" id="o-clef"></div></div>
