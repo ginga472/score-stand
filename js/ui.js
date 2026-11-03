@@ -9,6 +9,7 @@ export function el(tag, props = {}, ...children) {
     else if (k === 'text') node.textContent = v;
     else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
     else if (k === 'dataset') Object.assign(node.dataset, v);
+    else if (k === 'style') Object.assign(node.style, v);  // CSSOM, which the CSP allows (style attributes it doesn't)
     else if (v === true) node.setAttribute(k, '');
     else node.setAttribute(k, v);
   }

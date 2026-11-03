@@ -5,25 +5,35 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Chord Sprint</title>
+<link rel="stylesheet" href="../theme.css">
 <link rel="stylesheet" href="sprint.css">
 </head><body>
 <div class="app">
-  <header>
+  <header class="appbar">
+    <div class="brand" id="brand" hidden><img src="../icons/woodshed-mark.png" alt=""><span>Woodshed</span></div>
     <nav class="switch" id="appnav" aria-label="Screens" hidden><button data-go="music">Music</button><button class="on" aria-current="page">Chord Sprint</button><button data-go="sessions">Sessions</button></nav>
-    <h1 id="title">Chord Sprint</h1>
-    <div class="dev" id="dev"><span class="dot" id="dot"></span><span id="devname">No piano</span></div>
-    <div class="status" id="status"></div>
-    <div class="stat"><span class="big" id="time">60</span><span class="lbl" id="timelbl">sec</span></div>
-    <div class="stat"><span class="big" id="score">0</span><span class="lbl">chords</span></div>
-    <button class="rec" id="rec" hidden><i></i><span id="rectext">0:00</span></button>
-    <button id="sessbtn">Session</button>
-    <button class="apprec" id="apprec" hidden>● Record</button>
-    <button id="histbtn">History</button>
-    <button id="gear" aria-label="Settings">Settings</button>
+    <div class="appbar-end">
+      <button class="rec" id="rec" hidden><i></i><span id="rectext">0:00</span></button>
+      <button id="sessbtn">Session</button>
+      <button class="rec-btn" id="apprec" hidden>Record</button>
+    </div>
   </header>
+  <div class="page-head">
+    <div>
+      <h1 id="title">Chord Sprint</h1>
+      <p class="sub"><span class="chip" id="dev"><span class="dot" id="dot"></span><span id="devname">No piano</span></span><span id="keyline"></span></p>
+    </div>
+    <div class="stats">
+      <div class="stat-card"><b id="time">60</b><span id="timelbl">seconds</span></div>
+      <div class="stat-card"><b id="score">0</b><span>chords</span></div>
+      <div class="stat-card"><b id="acc">–</b><span>first try</span></div>
+      <button id="histbtn">History</button>
+      <button id="gear" aria-label="Settings">Settings</button>
+    </div>
+  </div>
   <div class="bar"><i id="timebar"></i></div>
   <div class="sheet" id="sheet"></div>
-  <div class="foot"><span id="keyline"></span><span><button id="finish" hidden>Finish round</button> <button id="skip">Skip chord</button></span></div>
+  <div class="foot"><span class="status" id="status"></span><span class="foot-btns"><button id="skip">Skip chord</button><button id="finish" hidden>End round</button></span></div>
 </div>
 
 <div class="overlay" id="settings" hidden><div class="card">

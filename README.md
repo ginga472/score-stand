@@ -36,6 +36,7 @@ GitHub Pages from the `main` branch root. On iPad or iPhone, open the site in Sa
 
 ```
 index.html          shell + Content Security Policy
+theme.css           shared colors and type (Music, Sessions, Chord Sprint)
 app.css
 sw.js               offline cache (network first)
 js/app.js           hash router

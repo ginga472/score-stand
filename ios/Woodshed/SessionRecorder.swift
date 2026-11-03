@@ -13,6 +13,8 @@ final class SessionRecorder {
         let playingMs: Int
         let pieces: [String]     // scores opened while recording, in order
         let sprintRounds: Int
+        let playing: [[Double]]  // stretches of playing, as fractions of the session [start, end]
+        let sprint: [[Double]]   // Chord Sprint rounds, the same way
     }
 
     private(set) var isActive = false
@@ -182,13 +184,35 @@ final class SessionRecorder {
                 if let score = m["score"] as? String, !pieces.contains(score) { pieces.append(score) }
             }
             let rounds = markers.filter { $0["k"] as? String == "round_start" }.count
+            let duration = max(1, obj["durationMs"] as? Int ?? 1)
+            let frac = { (ms: Int) -> Double in (Double(min(ms, duration)) / Double(duration) * 1000).rounded() / 1000 }
+            // Playing stretches for the timeline: notes less than 10 s apart belong together.
+            var spans: [[Double]] = []
+            var runStart = onsets.first ?? 0, runEnd = runStart
+            for t in onsets.dropFirst() {
+                if t - runEnd > 10_000 { spans.append([frac(runStart), frac(runEnd + 1000)]); runStart = t }
+                runEnd = t
+            }
+            if !onsets.isEmpty { spans.append([frac(runStart), frac(runEnd + 1000)]) }
+            var sprint: [[Double]] = []
+            var roundStart: Int?
+            for m in markers {
+                let ms = m["ms"] as? Int ?? 0
+                switch m["k"] as? String {
+                case "round_start": roundStart = ms
+                case "round_end", "stop": if let r = roundStart { sprint.append([frac(r), frac(ms)]); roundStart = nil }
+                default: break
+                }
+            }
             return Summary(name: url.lastPathComponent,
                            started: Double(obj["startedEpochMs"] as? Int ?? 0),
                            durationMs: obj["durationMs"] as? Int ?? 0,
                            notes: onsets.count,
                            playingMs: playing,
                            pieces: pieces,
-                           sprintRounds: rounds)
+                           sprintRounds: rounds,
+                           playing: Array(spans.prefix(200)),
+                           sprint: sprint)
         }.sorted { $0.started > $1.started }
     }
 }

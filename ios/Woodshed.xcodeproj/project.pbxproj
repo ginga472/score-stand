@@ -133,7 +133,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Copy the Score Stand web app and Chord Sprint into the app bundle (served at app://local/).\nset -euo pipefail\nSRC=\"${PROJECT_DIR}/..\"\nDST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/web\"\nrm -rf \"$DST\"\nmkdir -p \"$DST\"\ncp \"$SRC/index.html\" \"$SRC/app.css\" \"$SRC/manifest.webmanifest\" \"$DST/\"\ncp -R \"$SRC/js\" \"$SRC/vendor\" \"$SRC/icons\" \"$SRC/chord-sprint\" \"$DST/\"\n";
+			shellScript = "# Copy the Score Stand web app and Chord Sprint into the app bundle (served at app://local/).\nset -euo pipefail\nSRC=\"${PROJECT_DIR}/..\"\nDST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/web\"\nrm -rf \"$DST\"\nmkdir -p \"$DST\"\ncp \"$SRC/index.html\" \"$SRC/app.css\" \"$SRC/theme.css\" \"$SRC/manifest.webmanifest\" \"$DST/\"\ncp -R \"$SRC/js\" \"$SRC/vendor\" \"$SRC/icons\" \"$SRC/chord-sprint\" \"$DST/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

@@ -140,7 +140,7 @@ function tick(){
   cancelAnimationFrame(G.raf);
   let left=S.dur;
   if(G.phase==="play"&&S.dur){left=Math.max(0,(G.end-(G.paused?G.pausedAt:performance.now()))/1000);if(left<=0){finish();return}}
-  $("time").textContent=S.dur?Math.ceil(left):"–";$("timelbl").textContent=S.dur?"sec":"practice";
+  $("time").textContent=S.dur?Math.ceil(left):"–";$("timelbl").textContent=S.dur?"seconds":"practice";
   $("timebar").style.transform="scaleX("+(S.dur?left/S.dur:1)+")";
   if(G.phase==="play"&&!G.paused)G.raf=requestAnimationFrame(tick)}
 function finish(early){
@@ -220,7 +220,7 @@ function miniSVG(c){ // one chord on its own clef, for the results card
 function render(){
   G.lines.forEach(l=>l.chords.forEach(c=>c.key=l.key));
   $("sheet").innerHTML=systemSVG(G.lines[0],true)+systemSVG(G.lines[1],false);
-  $("score").textContent=G.score;
+  $("score").textContent=G.score;$("acc").textContent=G.score?Math.round(100*G.clean/G.score)+"%":"–";
   const k=G.lines[0].key;
   $("keyline").textContent=k.name+" major"+(k.sig?" · "+Math.abs(k.sig)+(k.sig>0?" sharp":" flat")+(Math.abs(k.sig)>1?"s":""):"")+(G.lines[0].label?" · "+G.lines[0].label:"")+" · "+(S.exact?"exact notes":"any octave");
   $("status").innerHTML=G.paused?"<b>Paused</b> · play the chord to carry on":
@@ -316,7 +316,7 @@ setInterval(()=>{if(!R.on)return;
   $("rectext").textContent=clock(Date.now()-R.startMs)+" · "+R.notes+" notes";
   $("s-now").textContent="Recording · "+$("rectext").textContent},1000);
 // In the app, the same screen switcher as Music; recordings are listed on the Sessions screen.
-if(IN_APP){$("appnav").hidden=false;$("title").hidden=true;$("sessbtn").hidden=true;$("apprec").hidden=false;
+if(IN_APP){$("appnav").hidden=false;$("brand").hidden=false;$("sessbtn").hidden=true;$("apprec").hidden=false;
   $("appnav").querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{
     try{window.webkit.messageHandlers.nav.postMessage({to:"music",route:b.dataset.go==="sessions"?"#/sessions":"#/"})}catch(e){}});
   $("apprec").onclick=()=>{R.last=Date.now();nat("start")}}

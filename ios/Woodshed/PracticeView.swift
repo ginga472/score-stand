@@ -35,7 +35,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.106, green: 0.114, blue: 0.133, alpha: 1)
+        view.backgroundColor = UIColor(red: 0.078, green: 0.098, blue: 0.2, alpha: 1)  // theme.css --bg
         let saved = UserDefaults.standard.string(forKey: Self.storeKey) ?? ""
         music = makeWebView(page: "index.html", scrolls: true)
         sprint = makeWebView(page: "chord-sprint/index.html", scrolls: false,
@@ -223,7 +223,8 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
     private func sendSession(event: String?) {
         let sessions = recorder.list().map {
             ["name": $0.name, "started": $0.started, "durationMs": $0.durationMs, "notes": $0.notes, "playingMs": $0.playingMs,
-             "pieces": $0.pieces, "sprintRounds": $0.sprintRounds] as [String: Any]
+             "pieces": $0.pieces, "sprintRounds": $0.sprintRounds,
+             "playing": $0.playing, "sprint": $0.sprint] as [String: Any]
         }
         var state: [String: Any] = ["recording": recorder.isActive, "startedMs": recorder.startedMs, "sessions": sessions]
         if let event { state["event"] = event }
