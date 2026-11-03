@@ -15,7 +15,7 @@ final class SessionRecorder {
         let sprintRounds: Int
         let playing: [[Double]]  // stretches of playing, as fractions of the session [start, end]
         let sprint: [[Double]]   // Chord Sprint rounds, the same way
-        let review: String?      // Claude's notes on the session (JSON text), if pasted in
+        let review: String?      // Notes on the session (JSON text), pasted in or synced
         let complete: Bool       // false while it's still recording (or was cut off)
     }
 
@@ -171,7 +171,7 @@ final class SessionRecorder {
         }
     }
 
-    /// Claude's notes live next to the session: session-….json → session-….notes
+    /// Session notes live next to the session: session-….json → session-….notes
     static func notesURL(for session: URL) -> URL {
         session.deletingPathExtension().appendingPathExtension("notes")
     }

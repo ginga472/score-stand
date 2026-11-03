@@ -32,6 +32,7 @@ function week(sessions) {
     ['Last 7 days', `${recent.length} session${recent.length === 1 ? '' : 's'}`],
     ['Playing time', minutes(recent.reduce((t, x) => t + x.playingMs, 0))],
     ['Chord Sprint', `${recent.reduce((t, x) => t + (x.sprintRounds || 0), 0)} rounds`],
+    ['With notes', `${recent.filter((x) => x.review).length} of ${recent.length}`],
     ['Most practiced', top ? top[0] : '–', 'small'],
   ];
 }
@@ -44,12 +45,12 @@ function timeline(x) {
     (x.playing || []).map(bar(null)), (x.sprint || []).map(bar('sprint')));
 }
 
-// Claude's review of a session arrives as a fenced block in its reply:
+// Notes on a session (from a teacher, Claude, or yourself) arrive as a fenced block:
 //   ```woodshed
-//   {"woodshed": 1, "session": "session-….json", "headline": "…",
+//   {"woodshed": 1, "session": "session-….json", "by": "optional author", "headline": "…",
 //    "breakdown": [{"label": "…", "min": 6}], "findings": ["…"], "next": ["…"]}
 //   ```
-// Alan copies the reply (or just the block) and taps "Paste notes from Claude".
+// Copy the message (or just the block) and tap "Paste notes". Synced notes arrive the same way.
 export function parseNotes(text) {
   const fenced = /```\s*woodshed\s*\n([\s\S]*?)```/.exec(text);
   const raw = fenced ? fenced[1] : text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
@@ -60,6 +61,7 @@ export function parseNotes(text) {
   return {
     woodshed: 1,
     session: n.session,
+    by: typeof n.by === 'string' ? n.by.trim().slice(0, 40) : '',
     headline: typeof n.headline === 'string' ? n.headline.slice(0, 300) : '',
     breakdown: (Array.isArray(n.breakdown) ? n.breakdown : [])
       .filter((b) => b && typeof b.label === 'string' && Number.isFinite(b.min) && b.min >= 0)
@@ -69,17 +71,33 @@ export function parseNotes(text) {
   };
 }
 
+function readNotes(x) {
+  try { return x.review ? JSON.parse(x.review) : null; } catch { return null; } // unreadable notes are ignored
+}
+
+// One line that sums the notes up while the card is closed.
+function gist(n) {
+  const parts = [];
+  const top = [...(n.breakdown || [])].sort((a, b) => b.min - a.min)[0];
+  if (top) parts.push(`Most time: ${top.label} (${top.min} min)`);
+  const f = (n.findings || []).length, nx = (n.next || []).length;
+  if (f) parts.push(`${f} observation${f === 1 ? '' : 's'}`);
+  if (nx) parts.push(`${nx} next step${nx === 1 ? '' : 's'}`);
+  return parts.join(' · ');
+}
+
 function review(x, open, toggle) {
-  let n = null;
-  try { n = x.review ? JSON.parse(x.review) : null; } catch { /* unreadable notes are ignored */ }
+  const n = readNotes(x);
   if (!n) return null;
   const total = n.breakdown.reduce((t, b) => t + b.min, 0) || 1;
   const list = (title, items, cls) => (items.length ? el('div', { class: 'review-col' },
     el('h4', { text: title }), el(cls === 'ol' ? 'ol' : 'ul', {}, items.map((t) => el('li', { text: t })))) : null);
   return el('div', { class: 'review' + (open ? ' open' : '') },
     el('button', { class: 'review-head', onclick: toggle },
-      el('span', { class: 'review-badge', text: 'Claude' }),
-      el('span', { class: 'review-headline', text: n.headline || 'Notes' }),
+      el('span', { class: 'review-badge', text: 'Notes' }),
+      el('span', { class: 'review-text' },
+        el('span', { class: 'review-headline', text: n.headline || 'Session notes' }),
+        el('span', { class: 'review-gist muted', text: [n.by ? `From ${n.by}` : '', open ? '' : gist(n)].filter(Boolean).join(' · ') })),
       el('span', { class: 'muted', text: open ? 'Hide' : 'Show' })),
     open ? el('div', { class: 'review-body' },
       n.breakdown.length ? el('div', { class: 'review-col breakdown' },
@@ -102,7 +120,7 @@ export function renderSessions(root, go) {
 
   window.pastedText = (text) => {
     const n = parseNotes(text || '');
-    if (!n) { toast("The clipboard doesn't have Claude's notes. Copy the whole reply, or the woodshed block in it."); return; }
+    if (!n) { toast("The clipboard doesn't have session notes. Copy the whole message, or the woodshed block in it."); return; }
     if (!native.recording().sessions.some((x) => x.name === n.session)) { toast(`No session called ${n.session} on this iPad.`); return; }
     opened.add(n.session);
     native.saveNotes(n.session, JSON.stringify(n));
@@ -155,10 +173,10 @@ export function renderSessions(root, go) {
     el('div', { class: 'page-head' },
       el('div', {},
         el('h1', { text: 'Sessions' }),
-        el('p', { class: 'sub', text: 'Share a session with Claude for a practice summary.' })),
+        el('p', { class: 'sub', text: 'Your recordings, with notes from whoever reviewed them.' })),
       el('div', { class: 'head-actions' },
         el('div', { class: 'legend' }, el('span', {}, el('i'), 'Playing'), el('span', {}, el('i', { class: 'sprint' }), 'Chord Sprint')),
-        el('button', { onclick: native.paste }, 'Paste notes from Claude'))),
+        el('button', { onclick: native.paste }, 'Paste notes'))),
     summary,
     empty,
     list));

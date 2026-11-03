@@ -48,6 +48,7 @@ function cleanNotes(n: any, name: string) {
   return {
     woodshed: 1,
     session: name,
+    by: str(n.by, 40).trim(),
     headline: str(n.headline, 300),
     breakdown: (Array.isArray(n.breakdown) ? n.breakdown : [])
       .filter((b: any) => b && typeof b.label === "string" && Number.isFinite(b.min) && b.min >= 0)
