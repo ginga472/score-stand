@@ -71,9 +71,8 @@ export function parseNotes(text) {
   };
 }
 
-function readNotes(x) {
-  try { return x.review ? JSON.parse(x.review) : null; } catch { return null; } // unreadable notes are ignored
-}
+// Notes pass through parseNotes again on display, whoever wrote them (pasted or synced).
+const readNotes = (x) => (x.review ? parseNotes(x.review) : null);
 
 // One line that sums the notes up while the card is closed.
 function gist(n) {

@@ -240,8 +240,8 @@ async function push(uid) {
 
 // ---------- practice sessions (iPad app only) ----------
 // Each finished session uploads once: the file to the private `sessions` bucket and a summary
-// row in practice_sessions. Claude reviews sessions through the claude-sessions edge function,
-// which writes `review`; new reviews come back here and are saved next to the session.
+// row in practice_sessions. A reviewer account (Claude) can read those and write `review` through
+// save_session_notes() (supabase/sessions.sql); new notes come back here and are saved next to the session.
 const SESSION_NAME = /^session-\d{4}-\d{2}-\d{2}-\d{6}\.json$/;
 async function syncSessions(uid) {
   if (!native.inApp) return;
