@@ -23,6 +23,8 @@ final class SessionRecorder {
     private var markers: [[String: Any]] = []
     private var devices: [String] = []
     private var lastSave = Date()
+    /// Last time a key was pressed (or the session started). Used to end a forgotten session.
+    private(set) var lastActivity = Date()
 
     static let folder: URL = {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -44,7 +46,7 @@ final class SessionRecorder {
     var startedMs: Double { startDate.timeIntervalSince1970 * 1000 }
 
     func start(devices: [String]) {
-        if isActive { stop() }
+        guard !isActive else { return }  // already recording: keep the current session
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
@@ -55,7 +57,43 @@ final class SessionRecorder {
         markers = []
         self.devices = devices
         isActive = true
+        lastActivity = Date()
         save(final: false)
+    }
+
+    /// Picks up a session that was still recording when the app was closed (iOS can quit a
+    /// background app at any time), as long as it was saved within `within` seconds.
+    /// Its timeline keeps following the wall clock, so the gap shows up as a pause.
+    func resumeIfRecent(within: TimeInterval) -> Bool {
+        guard !isActive else { return false }
+        let files = (try? FileManager.default.contentsOfDirectory(at: SessionRecorder.folder,
+                                                                 includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let newest = files.filter { $0.pathExtension == "json" }
+            .compactMap { url -> (URL, Date)? in
+                guard let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else { return nil }
+                return (url, date)
+            }
+            .max { $0.1 < $1.1 }
+        guard let (url, savedAt) = newest, Date().timeIntervalSince(savedAt) < within,
+              let data = try? Data(contentsOf: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              obj["complete"] as? Bool == false,
+              let startedMs = obj["startedEpochMs"] as? Int else { return false }
+        let start = Date(timeIntervalSince1970: Double(startedMs) / 1000)
+        let elapsedNs = UInt64(max(0, Date().timeIntervalSince(start)) * 1_000_000_000)
+        let nowNs = SessionRecorder.nanoseconds(mach_absolute_time())
+        guard elapsedNs < nowNs else { return false }
+        name = url.lastPathComponent
+        startDate = start
+        startNs = nowNs - elapsedNs
+        events = obj["events"] as? [[Int]] ?? []
+        markers = obj["markers"] as? [[String: Any]] ?? []
+        devices = obj["devices"] as? [String] ?? []
+        isActive = true
+        lastActivity = Date()
+        addMarker(["k": "resumed"])
+        save(final: false)
+        return true
     }
 
     func stop() {
@@ -82,6 +120,7 @@ final class SessionRecorder {
             // Notes, plus sustain / sostenuto / soft pedal.
             guard kind == 0x80 || kind == 0x90 || (kind == 0xB0 && [64, 66, 67].contains(m.data1)) else { continue }
             events.append([ms(m.ticks), Int(m.status), Int(m.data1), Int(m.data2)])
+            if kind == 0x90 && m.data2 > 0 { lastActivity = Date() }
         }
         if Date().timeIntervalSince(lastSave) > 30 { save(final: false) }
     }

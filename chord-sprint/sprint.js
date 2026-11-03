@@ -50,7 +50,7 @@ function weight(c){const st=S.stats[statKey(c)];if(!st)return 2;
   return 1+4*(st.miss/st.n)+Math.min(4,Math.max(0,st.t-1.5))}
 
 // ---------- game ----------
-const G={lines:[],cur:0,held:new Set(),stale:new Set(),pausing:false,phase:"ready",start:0,end:0,score:0,clean:0,chordAt:0,log:[],last:null,raf:0};
+const G={lines:[],cur:0,held:new Set(),stale:new Set(),pausing:false,paused:false,pausedAt:0,phase:"ready",start:0,end:0,score:0,clean:0,chordAt:0,log:[],last:null,raf:0};
 function pickKey(){const ks=KEYS.filter(k=>S.keys.includes(k.name));return ks[Math.floor(Math.random()*ks.length)]||KEYS[0]}
 // Progression mode: each line is one common progression, voiced the way hands move (nearest inversion).
 const PROGS=[["I–V–vi–IV",[0,4,5,3]],["I–IV–V–I",[0,3,4,0]],["vi–IV–I–V",[5,3,0,4]],["I–vi–IV–V",[0,5,3,4]],["ii–V–I–vi",[1,4,0,5]],["I–IV–vi–V",[0,3,5,4]]];
@@ -84,7 +84,7 @@ function newLine(){
   G.last=chords[3];
   return{key,chords}}
 function reset(){
-  G.rid=(G.rid||0)+1;G.pausing=false;G.stale.clear();
+  G.rid=(G.rid||0)+1;G.pausing=false;G.paused=false;G.stale.clear();
   G.lines=[newLine(),newLine()];G.cur=0;G.phase="ready";G.score=0;G.clean=0;G.log=[];G.held.clear();
   G.lines[0].chords[0].state="cur";
   cancelAnimationFrame(G.raf);tick();render()}
@@ -95,9 +95,14 @@ function noteOn(m){
   if(!$("session").hidden)return;
   if(!$("settings").hidden||!$("results").hidden||!$("history").hidden)return;
   G.held.add(m);G.stale.delete(m);
-  if(G.phase==="ready")beginRound();
-  if(G.phase!=="play"||G.pausing)return;
+  if(G.paused)resume();
+  if(G.phase==="over"||G.pausing)return;
   evaluate();render()}
+// A round stops its clock while Chord Sprint is off screen (or Settings is open) and picks up on the next key.
+function pause(){if(G.phase!=="play"||G.paused)return;G.paused=true;G.pausedAt=performance.now();cancelAnimationFrame(G.raf);render()}
+function resume(){if(!G.paused)return;const d=performance.now()-G.pausedAt;G.paused=false;
+  G.start+=d;G.chordAt+=d;if(G.end)G.end+=d;tick();render()}
+window.screenShown=function(shown){if(!shown)pause()};
 function noteOff(m){G.held.delete(m);G.stale.delete(m);if(G.phase!=="over")render()}
 // Keys still held from the chord just finished don't count toward the next one until re-pressed.
 const live=()=>[...G.held].filter(m=>!G.stale.has(m));
@@ -105,19 +110,22 @@ function evaluate(){
   const c=curChord(),held=live(),hs=new Set(held);let wrong,ok;
   if(S.exact){wrong=held.some(m=>!c.midis.includes(m));ok=!wrong&&c.midis.every(m=>hs.has(m))}
   else{const pcs=new Set(c.midis.map(m=>m%12));wrong=held.some(m=>!pcs.has(m%12));ok=!wrong&&[...pcs].every(p=>held.some(m=>m%12===p))}
-  if(wrong&&!c.missed){c.missed=true;const s=$("sheet");s.classList.remove("shake");void s.offsetWidth;s.classList.add("shake")}
-  if(ok)complete(false)}
+  if(wrong&&!c.missed){if(G.phase==="play")c.missed=true;const s=$("sheet");s.classList.remove("shake");void s.offsetWidth;s.classList.add("shake")}
+  if(!ok)return;
+  // The clock starts once the first chord is right, so warming up or a stray key doesn't cost time.
+  // That first chord counts toward the score but not toward chord speeds.
+  if(G.phase==="ready"){beginRound();complete(false,true)}else complete(false)}
 function beginRound(){
   G.phase="play";G.start=performance.now();G.end=S.dur?G.start+S.dur*1000:0;G.chordAt=G.start;tick();
   nat("marker",{k:"round_start",keys:S.keys,degs:S.degs,inv:S.inv,clef:S.clef,exact:S.exact,dur:S.dur})}
-function complete(skipped){
+function complete(skipped,untimed){
   const c=curChord(),now=performance.now(),t=Math.min(15,(now-G.chordAt)/1000);
   nat("marker",{k:"chord",name:c.name,roman:c.roman,key:(c.key||G.lines[0].key).name,inv:c.inv,clef:c.clef,midis:c.midis,sec:+((now-G.chordAt)/1000).toFixed(2),missed:c.missed||skipped,skipped});
   c.state=skipped?"skipped":"ok";if(skipped)c.missed=true;
   if(!skipped){G.score++;if(!c.missed)G.clean++}
-  G.log.push({c,t,skipped});
-  const k=statKey(c),st=S.stats[k]||{n:0,miss:0,t};
-  st.n++;st.miss+=c.missed?1:0;st.t=st.n===1?t:.7*st.t+.3*t;S.stats[k]=st;
+  G.log.push({c,t,skipped,untimed});
+  if(!untimed){const k=statKey(c),st=S.stats[k]||{n:0,miss:0,t};
+    st.n++;st.miss+=c.missed?1:0;st.t=st.n===1?t:.7*st.t+.3*t;S.stats[k]=st}
   G.chordAt=now;G.cur++;G.stale=new Set(G.held);
   if(G.cur<4){curChord().state="cur";render();return}
   // Hold the finished line on screen for a moment so the last chord's result is visible.
@@ -131,32 +139,35 @@ function complete(skipped){
 function tick(){
   cancelAnimationFrame(G.raf);
   let left=S.dur;
-  if(G.phase==="play"&&S.dur){left=Math.max(0,(G.end-performance.now())/1000);if(left<=0){finish();return}}
+  if(G.phase==="play"&&S.dur){left=Math.max(0,(G.end-(G.paused?G.pausedAt:performance.now()))/1000);if(left<=0){finish();return}}
   $("time").textContent=S.dur?Math.ceil(left):"–";$("timelbl").textContent=S.dur?"sec":"practice";
   $("timebar").style.transform="scaleX("+(S.dur?left/S.dur:1)+")";
-  if(G.phase==="play")G.raf=requestAnimationFrame(tick)}
-function finish(){
-  if(G.phase==="play")nat("marker",{k:"round_end",score:G.score,clean:G.clean});
+  if(G.phase==="play"&&!G.paused)G.raf=requestAnimationFrame(tick)}
+function finish(early){
+  if(G.phase!=="play")return;
+  nat("marker",{k:"round_end",score:G.score,clean:G.clean,early:!!early});
+  G.paused=false;
   G.phase="over";cancelAnimationFrame(G.raf);$("time").textContent=S.dur?"0":"–";$("timebar").style.transform="scaleX(0)";save();
   const done=G.log.filter(l=>!l.skipped);
-  const elapsed=((S.dur?S.dur*1000:performance.now()-G.start)/1000);
-  $("r-title").textContent=S.dur?"Time!":"Practice finished";
+  const counts=S.dur&&!early;  // only full timed rounds go into history and best scores
+  const elapsed=((counts?S.dur*1000:performance.now()-G.start)/1000);
+  $("r-title").textContent=counts?"Time!":S.dur?"Round ended early":"Practice finished";
   $("r-score").textContent=G.score;
   $("r-avg").textContent=G.score?(elapsed/G.score).toFixed(1):"–";
   $("r-acc").textContent=G.score?Math.round(100*G.clean/G.score)+"%":"–";
   const bk=[S.mode,S.keys.slice().sort().join(""),S.mode==="prog"?"":S.degs.join(""),S.inv,S.clef,S.exact,S.dur].join("|");
   const prev=S.best[bk];
-  if(G.score&&S.dur)S.history.push({t:Date.now(),n:G.score,spc:+(elapsed/G.score).toFixed(2),acc:+(G.clean/G.score).toFixed(2),
+  if(G.score&&counts)S.history.push({t:Date.now(),n:G.score,spc:+(elapsed/G.score).toFixed(2),acc:+(G.clean/G.score).toFixed(2),
     dur:S.dur,mode:S.mode,keys:S.keys.slice(),clef:S.clef,inv:S.inv,exact:S.exact});
   if(S.history.length>3000)S.history=S.history.slice(-3000);
-  if(S.dur){if(!prev||G.score>prev)S.best[bk]=G.score;
+  if(counts){if(!prev||G.score>prev)S.best[bk]=G.score;
     $("r-best").textContent=!prev?"First round with these settings.":G.score>prev?"New best! Previous best was "+prev+".":"Best with these settings: "+prev+"."}
-  else $("r-best").textContent="Practice rounds don't count toward your history or best scores. Slow chords still come up more often.";
+  else $("r-best").textContent=(S.dur?"Rounds ended early":"Practice rounds")+" don't count toward your history or best scores. Slow chords still come up more often.";
   save();
   const seen=new Set(),slow=G.log.slice().sort((a,b)=>(b.skipped-a.skipped)||(b.c.missed-a.c.missed)||(b.t-a.t))
     .filter(l=>{const k=statKey(l.c);if(seen.has(k))return false;seen.add(k);return true}).slice(0,3);
   $("r-slowwrap").hidden=!slow.length;
-  $("r-slow").innerHTML=slow.map(l=>'<figure>'+miniSVG(l.c)+'<figcaption><b>'+l.c.name+'</b> · '+INV_NAME[l.c.inv]+'<br>'+(l.skipped?"skipped":l.t.toFixed(1)+" s"+(l.c.missed?", wrong note first":""))+'</figcaption></figure>').join("");
+  $("r-slow").innerHTML=slow.map(l=>'<figure>'+miniSVG(l.c)+'<figcaption><b>'+l.c.name+'</b> · '+INV_NAME[l.c.inv]+'<br>'+(l.skipped?"skipped":l.untimed?"started the clock":l.t.toFixed(1)+" s"+(l.c.missed?", wrong note first":""))+'</figcaption></figure>').join("");
   $("results").hidden=false}
 
 // ---------- drawing ----------
@@ -212,9 +223,11 @@ function render(){
   $("score").textContent=G.score;
   const k=G.lines[0].key;
   $("keyline").textContent=k.name+" major"+(k.sig?" · "+Math.abs(k.sig)+(k.sig>0?" sharp":" flat")+(Math.abs(k.sig)>1?"s":""):"")+(G.lines[0].label?" · "+G.lines[0].label:"")+" · "+(S.exact?"exact notes":"any octave");
-  $("status").innerHTML=G.phase==="ready"?(midiReady?(S.dur?"<b>Play the first chord to start the clock</b>":"<b>Say each chord's name, then play it</b>"):"<b>Plug in the piano to start</b>"):
+  $("status").innerHTML=G.paused?"<b>Paused</b> · play the chord to carry on":
+    G.phase==="ready"?(midiReady?(S.dur?"<b>Play the first chord to start the clock</b>":"<b>Play the first chord to start</b> · say each name as you play"):"<b>Plug in the piano to start</b>"):
     G.phase==="play"&&!S.dur?"Say each chord's name, then play it":"";
-  $("finish").hidden=!(G.phase==="play"&&!S.dur);
+  $("finish").hidden=G.phase!=="play";
+  $("finish").textContent=S.dur?"End round":"Finish";
 }
 
 // ---------- MIDI input ----------
@@ -243,13 +256,16 @@ function drawSettings(){
   chips("o-dur",[["60","1 minute"],["120","2 minutes"],["0","Practice (no clock)"]],v=>S.dur===+v,v=>S.dur=+v);
   chips("o-mode",[["random","Random chords"],["prog","Progressions"]],v=>S.mode===v,v=>S.mode=v);
   $("o-degs").closest(".row").hidden=S.mode==="prog"}
-$("finish").onclick=()=>finish();
-$("gear").onclick=()=>{drawSettings();$("settings").hidden=false};
-$("o-done").onclick=()=>{$("settings").hidden=true;S.degs.sort();save();reset()};
+$("finish").onclick=()=>finish(true);
+let before="";
+const settingsKey=()=>JSON.stringify([S.keys,S.degs.slice().sort(),S.inv,S.clef,S.exact,S.dur,S.mode]);
+$("gear").onclick=()=>{pause();before=settingsKey();drawSettings();$("settings").hidden=false};
+// Changed settings start a fresh line; unchanged ones go back to the paused round.
+$("o-done").onclick=()=>{$("settings").hidden=true;S.degs.sort();save();if(settingsKey()!==before||G.phase!=="play")reset();else render()};
 $("r-again").onclick=()=>{$("results").hidden=true;reset()};
-$("histbtn").onclick=()=>{if(G.phase==="play")return;drawHistory();$("history").hidden=false};
+$("histbtn").onclick=()=>{pause();drawHistory();$("history").hidden=false};
 $("r-hist").onclick=()=>{$("results").hidden=true;drawHistory();$("history").hidden=false};
-$("h-done").onclick=()=>{$("history").hidden=true;if(G.phase==="over")reset()};
+$("h-done").onclick=()=>{$("history").hidden=true;if(G.phase==="over")reset();else render()};
 function drawHistory(){
   const H=(S.history||[]).filter(r=>r.dur);
   if(!H.length){$("h-body").innerHTML='<p class="hint">No rounds yet. Finish a round and it shows up here.</p>';return}
@@ -270,8 +286,8 @@ function drawHistory(){
     '<p class="hint">'+H.length+' rounds · '+H.reduce((s,r)=>s+r.n,0)+' chords played over '+days.size+' day'+(days.size>1?"s":"")+'</p>'+
     '<table><thead><tr><th>When</th><th>Chords</th><th>Each</th><th>First try</th><th>Settings</th></tr></thead><tbody>'+rows+'</tbody></table>'}
 $("r-settings").onclick=()=>{$("results").hidden=true;drawSettings();$("settings").hidden=false};
-$("skip").onclick=()=>{if(G.pausing)return;if(G.phase==="ready")beginRound();
-  if(G.phase==="play")complete(true)};
+$("skip").onclick=()=>{if(G.pausing||G.phase==="over")return;if(G.paused)resume();
+  const first=G.phase==="ready";if(first)beginRound();complete(true,first)};
 // ---------- practice session recording (handled by the iPad app; the page only shows state) ----------
 const R={on:false,startMs:0,notes:0,last:0,sessions:[],delArm:null};
 function nat(cmd,payload){try{window.webkit.messageHandlers.session.postMessage(Object.assign({cmd},payload||{}));return true}catch(e){return false}}
@@ -295,8 +311,8 @@ function drawSession(){
 $("sessbtn").onclick=$("rec").onclick=()=>{R.delArm=null;nat("list");drawSession();$("session").hidden=false};
 $("s-done").onclick=()=>{$("session").hidden=true};
 $("s-toggle").onclick=()=>{nat(R.on?"stop":"start")};
+// The app ends a session after 20 minutes without a key pressed; it hears the piano on every screen.
 setInterval(()=>{if(!R.on)return;
-  if(Date.now()-R.last>20*60e3){nat("marker",{k:"auto_stop_silence"});nat("stop");return} // 20 quiet minutes ends the session
   $("rectext").textContent=clock(Date.now()-R.startMs)+" · "+R.notes+" notes";
   $("s-now").textContent="Recording · "+$("rectext").textContent},1000);
 // In the app, the same screen switcher as Music; recordings are listed on the Sessions screen.

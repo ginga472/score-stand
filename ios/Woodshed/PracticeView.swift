@@ -59,13 +59,27 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
             MainActor.assumeIsolated {
                 self?.recorder.addMarker(["k": "app_inactive"])
                 self?.recorder.flush()
+                self?.sprint.evaluateJavaScript("window.screenShown && window.screenShown(false);", completionHandler: nil)
             }
         }
         center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.recorder.addMarker(["k": "app_active"])
-                self?.sendSession(event: nil)
+                guard let self else { return }
+                self.recorder.addMarker(["k": "app_active"])
+                self.stopIfIdle()
+                self.sendSession(event: nil)
+                self.tellSprintIfShown()
             }
+        }
+        center.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recorder.flush() }
+        }
+
+        // A session the app was closed in the middle of carries on where it left off.
+        if recorder.resumeIfRecent(within: Self.idleLimit) { updatePill() }
+        // The app, not a page, decides when a forgotten session ends: it hears every key on every screen.
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopIfIdle() }
         }
 
         show(Screen(rawValue: UserDefaults.standard.string(forKey: Self.screenKey) ?? "") ?? .music)
@@ -97,8 +111,26 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         return web
     }
 
+    /// Ends the session after 20 minutes without a key pressed, wherever the app is.
+    static let idleLimit: TimeInterval = 20 * 60
+    private var idleTimer: Timer?
+
+    private func stopIfIdle() {
+        guard recorder.isActive, Date().timeIntervalSince(recorder.lastActivity) > Self.idleLimit else { return }
+        recorder.addMarker(["k": "auto_stop_silence"])
+        recorder.stop()
+        sendSession(event: "stopped")
+    }
+
+    /// Chord Sprint pauses a round while it's off screen.
+    private func tellSprintIfShown() {
+        guard loaded.contains(ObjectIdentifier(sprint)) else { return }
+        sprint.evaluateJavaScript("window.screenShown && window.screenShown(\(screen == .sprint));", completionHandler: nil)
+    }
+
     private func show(_ next: Screen) {
         screen = next
+        tellSprintIfShown()
         music.isHidden = next != .music
         sprint.isHidden = next != .sprint
         (next == .music ? music : sprint)?.becomeFirstResponder()  // so a page-turn pedal reaches the reader
@@ -115,6 +147,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded.insert(ObjectIdentifier(webView))
+        if webView == sprint { tellSprintIfShown() }
         webView.evaluateJavaScript("window.midiDevices && window.midiDevices(\(Self.json(midi.sourceNames())));", completionHandler: nil)
         sendSession(event: nil)
     }
@@ -164,6 +197,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
     private func handleSession(_ body: [String: Any]) {
         switch body["cmd"] as? String {
         case "start":
+            guard !recorder.isActive else { sendSession(event: nil); break }  // a second tap never restarts a session
             recorder.start(devices: midi.sourceNames())
             recorder.addMarker(["k": "screen", "to": screen.rawValue])
             sendSession(event: "started")
