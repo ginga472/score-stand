@@ -38,5 +38,13 @@ The iPad app bundles these same files and adds two things a web page can't do: r
 - **Nothing loads remotely.** A build step copies the web files into the app, and a custom `app://local/` scheme serves them from the bundle only (paths outside the bundled `web` folder get a 404). The page CSPs apply unchanged; the only network traffic is still Supabase sync.
 - **Navigation is locked to the bundled pages.** Any other URL is refused; tapped `https` links open in Safari instead of inside the app.
 - **Small native bridge.** Pages can only send three messages: `nav` (switch screen; an optional route must be a plain `#/path`), `session` (start/stop/list/share/delete recordings, add a marker, read the clipboard when you tap "Paste notes from Claude", save notes for a session: a JSON object under 100 KB, shown as plain text) and `store` (Chord Sprint settings as a JSON string). Session files are looked up by name inside the app's `Sessions` folder only.
-- **Recordings stay on the iPad** (Documents/Sessions, visible in the Files app) until shared by hand. They hold note numbers, timing, velocity, pedal and screen markers (score title and page), nothing else.
+- **Recordings** are saved on the iPad (Documents/Sessions, visible in the Files app). They hold note numbers, timing, velocity, pedal and screen markers (score title and page), nothing else. When you're signed in to sync, each finished session is also uploaded to your Supabase account (below).
+
+## Session sync and Claude (`supabase/sessions.sql`, `supabase/functions/claude-sessions`)
+
+- **Your data, your account.** Session files go to the private `sessions` bucket at `<your user id>/…` and a summary row to `practice_sessions`. Both are owner-only under RLS, like scores. Nothing is public; `check-security.sh` probes this.
+- **Claude never signs in as you.** It calls one edge function, `claude-sessions`, with its own key (`CLAUDE_SESSIONS_KEY`, 64 random hex characters, compared in constant time). The function refuses to run with a missing or short key.
+- **Least privilege.** With the key, the function can only list session summaries, download one session file by its exact `session-YYYY-MM-DD-HHmmss.json` name, and write that session's review (cleaned to plain strings and bounded sizes, the same rules as the app). It can't touch scores, markup, setlists, spots or your login.
+- **The key is not in the app or the repo.** It lives only in Supabase function secrets and in Claude's environment secrets. `deploy-sessions.sh deploy` creates it and puts it on the clipboard without printing it. Running `deploy` again rotates it, which locks the old key out.
+- **Reviews are shown as plain text** in the app (`textContent`), never as HTML.
 - Chord Sprint (`chord-sprint/`) has its own strict CSP (no inline script or style). It builds its staff SVG with `innerHTML` from internal data only; no user-entered text reaches it.

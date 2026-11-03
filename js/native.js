@@ -24,6 +24,16 @@ export const stopRecording = () => post('session', { cmd: 'stop' });
 export const shareSession = (name) => post('session', { cmd: 'share', name });
 export const deleteSession = (name) => post('session', { cmd: 'delete', name });
 export const saveNotes = (name, text) => post('session', { cmd: 'notes', name, text });
+// A saved session's file contents (null if it's gone), for uploading.
+const reads = new Map();
+window.sessionFile = (name, text) => { reads.get(name)?.(text); reads.delete(name); };
+export function readSession(name) {
+  return new Promise((resolve) => {
+    reads.set(name, resolve);
+    post('session', { cmd: 'read', name });
+    setTimeout(() => { if (reads.get(name) === resolve) { reads.delete(name); resolve(null); } }, 10_000);
+  });
+}
 // Asks the app for the clipboard; the text comes back through window.pastedText.
 export const paste = () => post('session', { cmd: 'paste' });
 if (inApp) post('session', { cmd: 'list' });

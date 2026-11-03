@@ -3,7 +3,7 @@ import * as db from './db.js';
 import { renderLibrary } from './library.js';
 import { openReader } from './reader.js';
 import { renderSessions } from './sessions.js';
-import { inApp } from './native.js';
+import { inApp, onRecording } from './native.js';
 import * as sync from './sync.js';
 
 const root = document.getElementById('app');
@@ -38,6 +38,10 @@ async function route() {
 window.addEventListener('hashchange', route);
 route();
 sync.start();
+
+// A session that just stopped uploads (and Claude's notes come back) on the next sync; start it now.
+let wasRecording = false;
+onRecording((st) => { if (wasRecording && !st.recording) sync.syncNow(); wasRecording = st.recording; });
 
 // The iPad app serves these files itself, so it doesn't need the offline cache.
 if ('serviceWorker' in navigator && !window.__pianoApp) {

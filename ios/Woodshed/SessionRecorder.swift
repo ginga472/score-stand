@@ -16,6 +16,7 @@ final class SessionRecorder {
         let playing: [[Double]]  // stretches of playing, as fractions of the session [start, end]
         let sprint: [[Double]]   // Chord Sprint rounds, the same way
         let review: String?      // Claude's notes on the session (JSON text), if pasted in
+        let complete: Bool       // false while it's still recording (or was cut off)
     }
 
     private(set) var isActive = false
@@ -227,7 +228,8 @@ final class SessionRecorder {
                            sprintRounds: rounds,
                            playing: Array(spans.prefix(200)),
                            sprint: sprint,
-                           review: try? String(contentsOf: SessionRecorder.notesURL(for: url), encoding: .utf8))
+                           review: try? String(contentsOf: SessionRecorder.notesURL(for: url), encoding: .utf8),
+                           complete: obj["complete"] as? Bool ?? false)
         }.sorted { $0.started > $1.started }
     }
 }

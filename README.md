@@ -48,6 +48,8 @@ js/db.js            IndexedDB
 js/ui.js            DOM helpers (textContent only, no innerHTML)
 js/native.js        bridge to the iPad app (no-op in a browser)
 chord-sprint/       chord sight-reading game
+supabase/           sync schema, session sync (sessions.sql, functions/claude-sessions, deploy-sessions.sh)
+scripts/            woodshed_sessions.py: Claude's client for reviewing sessions
 ios/                iPad app (Swift: web view shell, USB MIDI, session recorder)
 vendor/             pdf.js 6.4.299 (legacy build), perfect-freehand 1.2.3
 ```

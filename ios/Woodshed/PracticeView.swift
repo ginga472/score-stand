@@ -220,6 +220,11 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
             let ok = recorder.saveNotes(text, for: name)
             music.evaluateJavaScript("window.notesSaved && window.notesSaved(\(ok));", completionHandler: nil)
             sendSession(event: nil)
+        case "read":
+            // A saved session's file, for uploading to your Supabase account.
+            guard let name = body["name"] as? String else { break }
+            let text = recorder.url(for: name).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+            music.evaluateJavaScript("window.sessionFile && window.sessionFile(\(Self.json(name)), \(Self.json(text.map { $0 as Any } ?? NSNull())));", completionHandler: nil)
         case "paste":
             // Reading the clipboard shows iOS's own "Allow Paste" prompt.
             let text = UIPasteboard.general.string ?? ""
@@ -233,7 +238,8 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         let sessions = recorder.list().map {
             ["name": $0.name, "started": $0.started, "durationMs": $0.durationMs, "notes": $0.notes, "playingMs": $0.playingMs,
              "pieces": $0.pieces, "sprintRounds": $0.sprintRounds,
-             "playing": $0.playing, "sprint": $0.sprint, "review": $0.review.map { $0 as Any } ?? NSNull()] as [String: Any]
+             "playing": $0.playing, "sprint": $0.sprint, "review": $0.review.map { $0 as Any } ?? NSNull(),
+             "complete": $0.complete] as [String: Any]
         }
         var state: [String: Any] = ["recording": recorder.isActive, "startedMs": recorder.startedMs, "sessions": sessions]
         if let event { state["event"] = event }
