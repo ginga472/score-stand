@@ -23,6 +23,9 @@ export const startRecording = () => post('session', { cmd: 'start' });
 export const stopRecording = () => post('session', { cmd: 'stop' });
 export const shareSession = (name) => post('session', { cmd: 'share', name });
 export const deleteSession = (name) => post('session', { cmd: 'delete', name });
+export const saveNotes = (name, text) => post('session', { cmd: 'notes', name, text });
+// Asks the app for the clipboard; the text comes back through window.pastedText.
+export const paste = () => post('session', { cmd: 'paste' });
 if (inApp) post('session', { cmd: 'list' });
 
 // The bar at the top of every screen: the app's name, where you are, and the one Record button.

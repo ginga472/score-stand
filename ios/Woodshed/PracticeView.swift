@@ -215,6 +215,15 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
             sendSession(event: nil)
         case "share":
             if let name = body["name"] as? String, let url = recorder.url(for: name) { share(url) }
+        case "notes":
+            guard let name = body["name"] as? String, let text = body["text"] as? String else { break }
+            let ok = recorder.saveNotes(text, for: name)
+            music.evaluateJavaScript("window.notesSaved && window.notesSaved(\(ok));", completionHandler: nil)
+            sendSession(event: nil)
+        case "paste":
+            // Reading the clipboard shows iOS's own "Allow Paste" prompt.
+            let text = UIPasteboard.general.string ?? ""
+            music.evaluateJavaScript("window.pastedText && window.pastedText(\(Self.json(text)));", completionHandler: nil)
         default:
             break
         }
@@ -224,7 +233,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         let sessions = recorder.list().map {
             ["name": $0.name, "started": $0.started, "durationMs": $0.durationMs, "notes": $0.notes, "playingMs": $0.playingMs,
              "pieces": $0.pieces, "sprintRounds": $0.sprintRounds,
-             "playing": $0.playing, "sprint": $0.sprint] as [String: Any]
+             "playing": $0.playing, "sprint": $0.sprint, "review": $0.review.map { $0 as Any } ?? NSNull()] as [String: Any]
         }
         var state: [String: Any] = ["recording": recorder.isActive, "startedMs": recorder.startedMs, "sessions": sessions]
         if let event { state["event"] = event }

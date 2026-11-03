@@ -1,6 +1,6 @@
 // Sessions screen (iPad app only): practice recordings saved in the app's Documents/Sessions folder.
 // The app sends the list through native.js; sharing and deleting go back to the app.
-import { el, fill } from './ui.js';
+import { el, fill, toast } from './ui.js';
 import * as native from './native.js';
 
 const clock = (ms) => {
@@ -44,12 +44,70 @@ function timeline(x) {
     (x.playing || []).map(bar(null)), (x.sprint || []).map(bar('sprint')));
 }
 
+// Claude's review of a session arrives as a fenced block in its reply:
+//   ```woodshed
+//   {"woodshed": 1, "session": "session-….json", "headline": "…",
+//    "breakdown": [{"label": "…", "min": 6}], "findings": ["…"], "next": ["…"]}
+//   ```
+// Alan copies the reply (or just the block) and taps "Paste notes from Claude".
+export function parseNotes(text) {
+  const fenced = /```\s*woodshed\s*\n([\s\S]*?)```/.exec(text);
+  const raw = fenced ? fenced[1] : text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+  let n;
+  try { n = JSON.parse(raw); } catch { return null; }
+  if (!n || n.woodshed !== 1 || typeof n.session !== 'string') return null;
+  const strs = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === 'string').map((x) => x.slice(0, 400)).slice(0, 12) : []);
+  return {
+    woodshed: 1,
+    session: n.session,
+    headline: typeof n.headline === 'string' ? n.headline.slice(0, 300) : '',
+    breakdown: (Array.isArray(n.breakdown) ? n.breakdown : [])
+      .filter((b) => b && typeof b.label === 'string' && Number.isFinite(b.min) && b.min >= 0)
+      .map((b) => ({ label: b.label.slice(0, 120), min: Math.round(b.min * 10) / 10 })).slice(0, 12),
+    findings: strs(n.findings),
+    next: strs(n.next),
+  };
+}
+
+function review(x, open, toggle) {
+  let n = null;
+  try { n = x.review ? JSON.parse(x.review) : null; } catch { /* unreadable notes are ignored */ }
+  if (!n) return null;
+  const total = n.breakdown.reduce((t, b) => t + b.min, 0) || 1;
+  const list = (title, items, cls) => (items.length ? el('div', { class: 'review-col' },
+    el('h4', { text: title }), el(cls === 'ol' ? 'ol' : 'ul', {}, items.map((t) => el('li', { text: t })))) : null);
+  return el('div', { class: 'review' + (open ? ' open' : '') },
+    el('button', { class: 'review-head', onclick: toggle },
+      el('span', { class: 'review-badge', text: 'Claude' }),
+      el('span', { class: 'review-headline', text: n.headline || 'Notes' }),
+      el('span', { class: 'muted', text: open ? 'Hide' : 'Show' })),
+    open ? el('div', { class: 'review-body' },
+      n.breakdown.length ? el('div', { class: 'review-col breakdown' },
+        el('h4', { text: 'Where the time went' }),
+        n.breakdown.map((b) => el('div', { class: 'brow' },
+          el('span', { text: b.label }),
+          el('div', { class: 'bbar' }, el('i', { style: { width: `${(100 * b.min) / total}%` } })),
+          el('b', { text: `${b.min} min` })))) : null,
+      list('What stood out', n.findings),
+      list('Next session', n.next, 'ol')) : null);
+}
+
 export function renderSessions(root, go) {
   const app = native.appBar(el, 'sessions', go);
   const summary = el('div', { class: 'week' });
   const list = el('ul', { class: 'session-list' });
   let delArm = null;
   let tick;
+  const opened = new Set();
+
+  window.pastedText = (text) => {
+    const n = parseNotes(text || '');
+    if (!n) { toast("The clipboard doesn't have Claude's notes. Copy the whole reply, or the woodshed block in it."); return; }
+    if (!native.recording().sessions.some((x) => x.name === n.session)) { toast(`No session called ${n.session} on this iPad.`); return; }
+    opened.add(n.session);
+    native.saveNotes(n.session, JSON.stringify(n));
+  };
+  window.notesSaved = (ok) => toast(ok ? 'Notes added to the session.' : "Couldn't save those notes.");
 
   function draw() {
     clearInterval(tick);
@@ -70,6 +128,7 @@ export function renderSessions(root, go) {
     fill(list, live, st.sessions.map((x) => {
       const what = [...(x.pieces || [])];
       if (x.sprintRounds) what.push(`Chord Sprint × ${x.sprintRounds}`);
+      const toggle = () => { if (opened.has(x.name)) opened.delete(x.name); else opened.add(x.name); draw(); };
       return el('li', { class: 'session' },
         el('div', { class: 'session-meta' },
           el('strong', { text: when(x.started) }),
@@ -81,7 +140,8 @@ export function renderSessions(root, go) {
           el('button', { onclick: () => native.shareSession(x.name) }, 'Share'),
           el('button', { class: 'ghost' + (delArm === x.name ? ' warn' : ''), onclick: () => {
             if (delArm === x.name) { delArm = null; native.deleteSession(x.name); } else { delArm = x.name; draw(); }
-          } }, delArm === x.name ? 'Tap to confirm' : 'Delete')));
+          } }, delArm === x.name ? 'Tap to confirm' : 'Delete')),
+        review(x, opened.has(x.name), toggle));
     }));
     empty.hidden = !!(st.sessions.length || st.recording);
   }
@@ -96,12 +156,14 @@ export function renderSessions(root, go) {
       el('div', {},
         el('h1', { text: 'Sessions' }),
         el('p', { class: 'sub', text: 'Share a session with Claude for a practice summary.' })),
-      el('div', { class: 'legend' }, el('span', {}, el('i'), 'Playing'), el('span', {}, el('i', { class: 'sprint' }), 'Chord Sprint'))),
+      el('div', { class: 'head-actions' },
+        el('div', { class: 'legend' }, el('span', {}, el('i'), 'Playing'), el('span', {}, el('i', { class: 'sprint' }), 'Chord Sprint')),
+        el('button', { onclick: native.paste }, 'Paste notes from Claude'))),
     summary,
     empty,
     list));
 
   const off = native.onRecording(draw);
   draw();
-  root._cleanup = () => { clearInterval(tick); off(); app.off(); };
+  root._cleanup = () => { clearInterval(tick); off(); app.off(); window.pastedText = null; window.notesSaved = null; };
 }

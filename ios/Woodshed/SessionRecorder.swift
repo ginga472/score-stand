@@ -15,6 +15,7 @@ final class SessionRecorder {
         let sprintRounds: Int
         let playing: [[Double]]  // stretches of playing, as fractions of the session [start, end]
         let sprint: [[Double]]   // Chord Sprint rounds, the same way
+        let review: String?      // Claude's notes on the session (JSON text), if pasted in
     }
 
     private(set) var isActive = false
@@ -165,7 +166,20 @@ final class SessionRecorder {
     func delete(_ name: String) {
         if let url = url(for: name), !(isActive && name == self.name) {
             try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SessionRecorder.notesURL(for: url))
         }
+    }
+
+    /// Claude's notes live next to the session: session-….json → session-….notes
+    static func notesURL(for session: URL) -> URL {
+        session.deletingPathExtension().appendingPathExtension("notes")
+    }
+
+    /// Saves notes for a saved session. Only JSON objects of a sensible size are accepted.
+    func saveNotes(_ text: String, for name: String) -> Bool {
+        guard let url = url(for: name), let data = text.data(using: .utf8), data.count < 100_000,
+              (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else { return false }
+        return (try? data.write(to: SessionRecorder.notesURL(for: url), options: .atomic)) != nil
     }
 
     /// Saved sessions, newest first. Playing time counts gaps of up to 5 s between notes.
@@ -212,7 +226,8 @@ final class SessionRecorder {
                            pieces: pieces,
                            sprintRounds: rounds,
                            playing: Array(spans.prefix(200)),
-                           sprint: sprint)
+                           sprint: sprint,
+                           review: try? String(contentsOf: SessionRecorder.notesURL(for: url), encoding: .utf8))
         }.sorted { $0.started > $1.started }
     }
 }
