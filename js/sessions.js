@@ -74,17 +74,6 @@ export function parseNotes(text) {
 // Notes pass through parseNotes again on display, whoever wrote them (pasted or synced).
 const readNotes = (x) => (x.review ? parseNotes(x.review) : null);
 
-// One line that sums the notes up while the card is closed.
-function gist(n) {
-  const parts = [];
-  const top = [...(n.breakdown || [])].sort((a, b) => b.min - a.min)[0];
-  if (top) parts.push(`Most time: ${top.label} (${top.min} min)`);
-  const f = (n.findings || []).length, nx = (n.next || []).length;
-  if (f) parts.push(`${f} observation${f === 1 ? '' : 's'}`);
-  if (nx) parts.push(`${nx} next step${nx === 1 ? '' : 's'}`);
-  return parts.join(' · ');
-}
-
 function review(x, open, toggle) {
   const n = readNotes(x);
   if (!n) return null;
@@ -96,7 +85,7 @@ function review(x, open, toggle) {
       el('span', { class: 'review-badge', text: 'Notes' }),
       el('span', { class: 'review-text' },
         el('span', { class: 'review-headline', text: n.headline || 'Session notes' }),
-        el('span', { class: 'review-gist muted', text: [n.by ? `From ${n.by}` : '', open ? '' : gist(n)].filter(Boolean).join(' · ') })),
+        open && n.by ? el('span', { class: 'review-by muted', text: `From ${n.by}` }) : null),
       el('span', { class: 'muted', text: open ? 'Hide' : 'Show' })),
     open ? el('div', { class: 'review-body' },
       n.breakdown.length ? el('div', { class: 'review-col breakdown' },
