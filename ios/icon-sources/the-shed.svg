@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+ <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b2f6b"/><stop offset=".65" stop-color="#e0766a"/><stop offset="1" stop-color="#f6b878"/></linearGradient>
+ <linearGradient id="wood" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#9a4f2c"/><stop offset="1" stop-color="#7a3a1e"/></linearGradient>
+ <radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffe9a8" stop-opacity=".9"/><stop offset="1" stop-color="#ffe9a8" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="1024" height="1024" fill="url(#sky)"/>
+<circle cx="790" cy="230" r="70" fill="#fff4d6" opacity=".9"/>
+<circle cx="180" cy="170" r="6" fill="#fff"/><circle cx="300" cy="110" r="4" fill="#fff"/><circle cx="560" cy="150" r="5" fill="#fff"/>
+<rect x="0" y="860" width="1024" height="164" fill="#3d5a3a"/>
+<!-- shed body -->
+<polygon points="230,500 512,300 794,500 794,880 230,880" fill="url(#wood)"/>
+<g stroke="#5e2c15" stroke-width="6" opacity=".55">
+ <line x1="300" y1="460" x2="300" y2="880"/><line x1="370" y1="410" x2="370" y2="880"/><line x1="440" y1="360" x2="440" y2="880"/>
+ <line x1="584" y1="360" x2="584" y2="880"/><line x1="654" y1="410" x2="654" y2="880"/><line x1="724" y1="460" x2="724" y2="880"/>
+</g>
+<!-- roof -->
+<polygon points="190,520 512,270 834,520 794,540 512,325 230,540" fill="#3a2a2a"/>
+<!-- window glow -->
+<circle cx="512" cy="440" r="90" fill="url(#glow)"/>
+<rect x="472" y="405" width="80" height="70" rx="8" fill="#ffd77a" stroke="#3a2a2a" stroke-width="10"/>
+<line x1="512" y1="405" x2="512" y2="475" stroke="#3a2a2a" stroke-width="8"/>
+<!-- door of piano keys -->
+<rect x="372" y="560" width="280" height="320" rx="10" fill="#fbf7ee" stroke="#3a2a2a" stroke-width="12"/>
+<g stroke="#3a2a2a" stroke-width="6"><line x1="428" y1="566" x2="428" y2="874"/><line x1="484" y1="566" x2="484" y2="874"/><line x1="540" y1="566" x2="540" y2="874"/><line x1="596" y1="566" x2="596" y2="874"/></g>
+<g fill="#1e1a1a"><rect x="410" y="566" width="36" height="180" rx="5"/><rect x="466" y="566" width="36" height="180" rx="5"/><rect x="578" y="566" width="36" height="180" rx="5"/></g>
+</svg>

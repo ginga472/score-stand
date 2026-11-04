@@ -1,0 +1,84 @@
+/* Chord Sprint: read a line of triads on the grand staff, play each one on the piano.
+   Input arrives as raw MIDI from the iPad app (window.midiIn) or from Web MIDI in desktop Chrome. */
+/* Colors and fonts come from ../theme.css (shared with the Music and Sessions screens).
+   The music itself is drawn on light paper, so .sheet and the results figures switch to paper colors. */
+:root{--music:"Apple Symbols","Segoe UI Symbol","Noto Music","Bravura Text",serif;--bad-soft:rgba(255,107,97,.18)}
+.sheet,.slow figure{--ink:var(--paper-ink);--paper:#fffcf4;--muted:#776f63;--line:#ddd5c6;--accent:#c97a12;--accent-soft:#ffe6b8;
+  --ok:#1f8a4c;--bad:#c8372d;--bad-soft:#f8dedb;color:var(--paper-ink)}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:500 17px/1.4 var(--body);
+  padding:max(14px,env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;overflow:hidden}
+.app{height:100%;display:grid;grid-template-rows:auto auto 8px 1fr auto;gap:14px;max-width:1400px;margin:0 auto}
+button{font:700 16px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 16px;min-height:44px;touch-action:manipulation;cursor:pointer;box-shadow:var(--lift)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:800}
+.lbl{font:800 12px var(--body);color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.stats{display:flex;gap:10px;align-items:stretch}
+.stats>button{align-self:center}
+#keyline{font-weight:600}
+.status{color:var(--muted);font-weight:600}
+.status b{color:var(--accent);font-weight:800}
+.foot-btns{display:flex;gap:10px}
+.bar{height:8px;background:var(--well);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left;transition:transform .2s linear}
+.sheet{background:var(--paper);border:0;border-radius:var(--r);box-shadow:var(--lift);padding:8px 16px;display:flex;flex-direction:column;justify-content:space-evenly;min-height:0;overflow:hidden}
+.sheet svg{width:100%;height:auto;max-height:50%;display:block}
+.sheet .next{opacity:.55}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;color:var(--muted);font-size:.95rem}
+svg line{stroke:var(--ink);stroke-width:1.2}
+svg line.bl{stroke-width:1.6}
+svg line.end{stroke-width:4}
+svg .clef,svg .acc{fill:var(--ink);font-family:var(--music)}
+svg .hd{fill:var(--ink)} svg .hole{fill:var(--paper)}
+svg .curbar{fill:var(--accent-soft)}
+svg .badbar{fill:var(--bad-soft)}
+svg .ok .hd,svg .ok .acc{fill:var(--ok)}
+svg .held .hd{fill:var(--accent)}
+svg .wrong .hd,svg .wrong .acc{fill:var(--bad)} svg .wrong line{stroke:var(--bad)}
+svg .name{fill:var(--ok);font:600 22px var(--body);text-anchor:middle}
+svg .name.skip{fill:var(--bad)}
+svg .roman{fill:var(--muted);font:500 17px var(--body);text-anchor:middle}
+.overlay{position:fixed;inset:0;background:rgba(8,10,25,.6);display:grid;place-items:center;padding:16px;z-index:5}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--lift);padding:22px 24px;width:min(640px,100%);max-height:100%;overflow:auto;display:grid;gap:16px}
+.card h2{margin:0;font:800 1.6rem var(--display)}
+.row{display:grid;gap:6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips button{min-width:52px;padding:6px 12px}
+.chips button{box-shadow:none;background:var(--well);border-color:transparent;color:var(--muted)}
+.chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:800}
+.hint{color:var(--muted);font-size:.9rem;margin:0}
+.res{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center}
+.res div{background:var(--well);border-radius:var(--r-sm);padding:10px}
+.res b{display:block;font:800 2.1rem var(--display);font-variant-numeric:tabular-nums;color:var(--accent)}
+.slow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.slow figure{margin:0;background:var(--paper);border-radius:12px;padding:6px;text-align:center;font-size:.9rem}
+.slow svg{width:100%;height:auto}
+.actions{display:flex;gap:10px;justify-content:flex-end}
+.hist svg{width:100%;height:auto}
+.hist .ax{fill:var(--muted);font:13px var(--body)}
+.hist .grid{stroke:var(--line);stroke-width:1}
+.hist polyline{fill:none;stroke:var(--accent);stroke-width:2.5}
+.hist circle{fill:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:500;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+.rec{display:flex;align-items:center;gap:6px;color:var(--bad);font-weight:600;font-variant-numeric:tabular-nums;font-size:.95rem;background:none;border:none;padding:0 4px;min-height:44px}
+.rec i{width:11px;height:11px;border-radius:50%;background:var(--bad);animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.big-btn{font-size:1.15rem;padding:14px 22px}
+.big-btn.stop{background:var(--rec);border-color:var(--rec);color:#fff;font-weight:800}
+.recnow{color:var(--bad);font-weight:600;margin-left:12px;font-variant-numeric:tabular-nums}
+td button{min-height:36px;padding:4px 10px;font-size:.85rem}
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.shake{animation:shake .18s 2}
+header h1,header button{white-space:nowrap}
+/* Portrait iPad: stats wrap under the title; Settings becomes a gear. */
+@media (max-width:900px){
+  .stats{gap:8px}
+  .stat-card{min-width:74px;padding:4px 10px}
+  .stat-card b{font-size:24px}
+  #gear{font-size:0;padding:0 14px}
+  #gear::before{content:"⚙";font-size:1.3rem}
+}

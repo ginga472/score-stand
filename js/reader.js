@@ -6,6 +6,7 @@ import * as db from './db.js';
 import { loadPdf, renderPage } from './pdf.js';
 import { attachInk, drawStrokes } from './ink.js';
 import { el, clear, fill, promptForm, toast } from './ui.js';
+import * as native from './native.js';
 
 const NEXT_KEYS = new Set(['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter']);
 const PREV_KEYS = new Set(['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace']);
@@ -103,6 +104,7 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   const step = () => (twoUp() ? 2 : 1);
 
   let renderSeq = 0;
+  let lastMarked = '';
   async function render() {
     const seq = ++renderSeq;
     const s = score();
@@ -110,6 +112,8 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
     if (seq !== renderSeq) return;
     state.page = Math.max(1, Math.min(state.page, pdf.numPages));
     if (state.half && state.page >= pdf.numPages) state.half = false;
+    const where = `${s.id}:${state.page}`;
+    if (where !== lastMarked) { lastMarked = where; native.mark({ k: 'page', score: s.title, page: state.page, pages: pdf.numPages }); }
 
     view.classList.toggle('chrome-hidden', !state.chrome && !state.ink.enabled);
     halfBtn.classList.toggle('on', prefs.halfTurn);

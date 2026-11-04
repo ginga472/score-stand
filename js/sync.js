@@ -9,6 +9,7 @@
 import * as db from './db.js';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { loadPdf, makeThumb } from './pdf.js';
+import * as native from './native.js';
 
 export const enabled = Boolean(SUPABASE_URL && SUPABASE_KEY);
 
@@ -166,21 +167,35 @@ async function pull(uid) {
     }
   }
 
-  // Download PDFs for scores added on another device.
+  // Download PDFs for scores added on another device, plus any an earlier sync failed to save.
+  for (const s of await db.getAll('scores')) {
+    if (!needFiles.includes(s.id) && !(await db.get('files', s.id))) needFiles.push(s.id);
+  }
+  let failed = 0;
   for (const id of needFiles) {
-    const res = await api(`/storage/v1/object/authenticated/scores/${pdfPath(uid, id)}`, { raw: true });
-    const blob = new Blob([await res.arrayBuffer()], { type: 'application/pdf' });
-    await db.put('files', { id, blob });
-    await db.setMeta(`up:${id}`, true);
-    const score = await db.get('scores', id);
-    if (score) {
-      const pdf = await loadPdf(blob);
-      score.thumb = await makeThumb(pdf);
-      pdf.loadingTask.destroy();
-      await db.put('scores', score, { remote: true });
+    try {
+      await downloadFile(uid, id);
+    } catch (err) {
+      console.warn('PDF download failed', id, err);
+      failed++;
     }
   }
+  if (failed) throw new Error(`${failed} score${failed > 1 ? 's' : ''} couldn't be downloaded; will retry.`);
   return applied;
+}
+
+async function downloadFile(uid, id) {
+  const res = await api(`/storage/v1/object/authenticated/scores/${pdfPath(uid, id)}`, { raw: true });
+  const blob = new Blob([await res.arrayBuffer()], { type: 'application/pdf' });
+  await db.put('files', { id, blob });
+  await db.setMeta(`up:${id}`, true);
+  const score = await db.get('scores', id);
+  if (score) {
+    const pdf = await loadPdf(blob);
+    score.thumb = await makeThumb(pdf);
+    pdf.loadingTask.destroy();
+    await db.put('scores', score, { remote: true });
+  }
 }
 
 // ---------- push ----------
@@ -223,6 +238,42 @@ async function push(uid) {
   }
 }
 
+// ---------- practice sessions (iPad app only) ----------
+// Each finished session uploads once: the file to the private `sessions` bucket and a summary
+// row in practice_sessions. A reviewer account (Claude) can read those and write `review` through
+// save_session_notes() (supabase/sessions.sql); new notes come back here and are saved next to the session.
+const SESSION_NAME = /^session-\d{4}-\d{2}-\d{2}-\d{6}\.json$/;
+async function syncSessions(uid) {
+  if (!native.inApp) return;
+  const list = native.recording().sessions;
+  const done = new Set((await db.getMeta('uploadedSessions')) || []);
+  for (const x of list) {
+    if (!x.complete || done.has(x.name) || !SESSION_NAME.test(x.name)) continue;
+    const text = await native.readSession(x.name);
+    if (!text) continue;
+    await api(`/storage/v1/object/sessions/${uid}/${x.name}`, {
+      method: 'POST', headers: { 'x-upsert': 'true' }, body: new Blob([text], { type: 'application/json' }),
+    });
+    await api('/rest/v1/practice_sessions?on_conflict=owner,name', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: {
+        name: x.name, started_at: iso(x.started), duration_ms: x.durationMs, playing_ms: x.playingMs,
+        note_count: x.notes, pieces: x.pieces || [], sprint_rounds: x.sprintRounds || 0,
+      },
+    });
+    done.add(x.name);
+    await db.setMeta('uploadedSessions', [...done]);
+  }
+  let since = (await db.getMeta('reviewCursor')) || '1970-01-01T00:00:00Z';
+  const rows = await api(`/rest/v1/practice_sessions?select=name,review,review_at&review_at=gt.${encodeURIComponent(since)}&order=review_at.asc`);
+  for (const r of rows) {
+    if (r.review && list.some((x) => x.name === r.name)) native.saveNotes(r.name, JSON.stringify(r.review));
+    since = r.review_at;
+  }
+  await db.setMeta('reviewCursor', since);
+}
+
 // ---------- scheduling ----------
 let running = null;
 let again = false;
@@ -241,6 +292,8 @@ export function syncNow() {
       setStatus({ state: 'syncing' });
       const applied = await pull(s.user.id);
       await push(s.user.id);
+      // Session backup shouldn't hold up score sync (e.g. before sessions.sql has been run).
+      await syncSessions(s.user.id).catch((e) => console.warn('session sync:', e.message));
       setStatus({ state: 'ok' });
       if (applied) for (const fn of changeListeners) fn();
     } catch (e) {

@@ -30,3 +30,22 @@ Before syncing goes live:
 - [ ] CSP `connect-src` widened to the single Supabase project URL only.
 - [ ] `supabase/check-security.sh` passes (anonymous reads, writes, bucket listing and sign-up all refused).
 - [ ] Dependabot or manual check on vendored library versions.
+
+## iPad app (`ios/`)
+
+The iPad app bundles these same files and adds two things a web page can't do: reading the piano over USB MIDI, and recording practice sessions.
+
+- **Nothing loads remotely.** A build step copies the web files into the app, and a custom `app://local/` scheme serves them from the bundle only (paths outside the bundled `web` folder get a 404). The page CSPs apply unchanged; the only network traffic is still Supabase sync.
+- **Navigation is locked to the bundled pages.** Any other URL is refused; tapped `https` links open in Safari instead of inside the app.
+- **Small native bridge.** Pages can only send three messages: `nav` (switch screen; an optional route must be a plain `#/path`), `session` (start/stop/list/share/delete recordings, add a marker, read the clipboard when you tap "Paste notes", save notes for a session: a JSON object under 100 KB, shown as plain text) and `store` (Chord Sprint settings as a JSON string). Session files are looked up by name inside the app's `Sessions` folder only.
+- **Recordings** are saved on the iPad (Documents/Sessions, visible in the Files app). They hold note numbers, timing, velocity, pedal and screen markers (score title and page), nothing else. When you're signed in to sync, each finished session is also uploaded to your Supabase account (below).
+
+## Session sync and reviewers (`supabase/sessions.sql`)
+
+- **Your data, your account.** Session files go to the private `sessions` bucket at `<your user id>/…` and a summary row to `practice_sessions`. Both are owner-only under RLS, like scores. Nothing is public; `check-security.sh` probes this.
+- **No admin key anywhere.** A reviewer (Claude) is its own Supabase user with its own password, created by you in the dashboard (sign-ups stay off). It is linked to your account in `session_reviewers`, a table nobody can read or write over the API.
+- **The database enforces least privilege.** Extra RLS policies let a linked reviewer *read* your `practice_sessions` rows and `sessions` files. Its only write is `save_session_notes(name, notes)`, a security-definer function that accepts a JSON object under 100 KB and sets just `review` and `review_at` on a session it reviews. It can't change or delete anything else, and the score tables, markup, setlists and spots stay owner-only, so it sees none of them.
+- **The password is not in the app or the repo.** It lives only in Supabase Auth and in Claude's environment secrets. `setup-sessions.sh reviewer` generates it and puts it on the clipboard without printing it. Delete the reviewer user to revoke it; reset its password to rotate.
+- **Notes are cleaned twice:** by the reviewer client and again by the app (`parseNotes`) before display.
+- **Reviews are shown as plain text** in the app (`textContent`), never as HTML.
+- Chord Sprint (`chord-sprint/`) has its own strict CSP (no inline script or style). It builds its staff SVG with `innerHTML` from internal data only; no user-entered text reaches it.

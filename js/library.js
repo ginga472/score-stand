@@ -3,6 +3,7 @@ import * as db from './db.js';
 import { loadPdf, makeThumb } from './pdf.js';
 import { el, clear, fill, promptForm, confirmBox, toast } from './ui.js';
 import * as sync from './sync.js';
+import * as native from './native.js';
 
 const MAX_PDF_BYTES = 80 * 1024 * 1024;
 let tab = 'scores';
@@ -45,8 +46,8 @@ export async function renderLibrary(root, go) {
 
   const tabs = [['scores', 'Scores'], ['setlists', 'Setlists'], ['spots', 'Spots']];
   const body = el('section', { class: 'lib-body' });
-  const tabBar = el('nav', { class: 'tabs' }, tabs.map(([id, label]) =>
-    el('button', { class: 'tab', dataset: { tab: id }, onclick: () => { tab = id; draw(); } }, label)));
+  const tabBar = el('nav', { class: 'pills' }, tabs.map(([id, label]) =>
+    el('button', { dataset: { tab: id }, onclick: () => { tab = id; draw(); } }, label)));
 
   const syncBtn = el('button', { class: 'ghost sync-btn', hidden: !sync.enabled, onclick: () => accountDialog() });
   const LABELS = { 'signed-out': 'Sign in to sync', syncing: 'Syncing…', ok: 'Synced ✓', offline: 'Offline', error: 'Sync problem' };
@@ -58,14 +59,13 @@ export async function renderLibrary(root, go) {
   showStatus(sync.getStatus());
   const offStatus = sync.onStatus(showStatus);
 
+  const importBtn = el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF');
+  const app = native.appBar(el, 'music', go);
+
   const view = el('div', { class: 'library' },
-    el('header', { class: 'lib-head' },
-      el('h1', { text: 'Score Stand' }),
-      el('div', { class: 'row' },
-        syncBtn,
-        el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF')),
-      fileInput),
-    tabBar,
+    app.bar,
+    el('div', { class: 'page-head' }, el('h1', { text: 'Music' }), tabBar),
+    fileInput,
     body);
   fill(root, view);
 
@@ -99,9 +99,19 @@ export async function renderLibrary(root, go) {
     const search = el('input', { type: 'search', class: 'search', placeholder: 'Search titles and tags', value: query,
       oninput: (e) => { query = e.target.value; drawScoresDebounced(); } });
 
+    // The score opened most recently, with a practice spot on that page if there is one.
+    const recent = q ? null : scores.filter((x) => x.openedAt).sort((x, y) => y.openedAt - x.openedAt)[0];
+    const spot = recent && (await db.getAll('spots')).find((sp) => sp.scoreId === recent.id && sp.page === recent.lastPage);
+
     if (stale(seq)) return;
     fill(body,
-      search,
+      recent ? el('div', { class: 'continue' },
+        el('div', {},
+          el('div', { class: 'k', text: 'Pick up where you left off' }),
+          el('strong', { text: spot ? `${recent.title} · ${spot.label}` : recent.title }),
+          el('p', { class: 'goal', text: spot?.goal ? `Goal: ${spot.goal}${spot.tempo ? ` · ♩ = ${spot.tempo}` : ''}` : `Page ${recent.lastPage || 1} of ${recent.pageCount}` })),
+        el('button', { onclick: () => go(`#/score/${recent.id}/${recent.lastPage || 1}`) }, `Open page ${recent.lastPage || 1}`)) : null,
+      el('div', { class: 'toolbar' }, search, importBtn, syncBtn),
       scores.length ? null : el('div', { class: 'empty' },
         el('p', { text: 'No scores yet.' }),
         el('p', { class: 'muted', text: 'Tap "Import PDF", or on the Mac drag PDFs onto this window. On iPad you can also pick files straight from iCloud Drive.' })),
@@ -112,6 +122,8 @@ export async function renderLibrary(root, go) {
           el('div', { class: 'card-meta' },
             el('strong', { text: s.title }),
             el('span', { class: 'muted', text: `${s.pageCount} page${s.pageCount > 1 ? 's' : ''}${s.lastPage > 1 ? ` · on p.${s.lastPage}` : ''}` }),
+            s.openedAt && s.pageCount > 1 ? el('div', { class: 'progress', title: 'How far you have read' },
+              el('i', { style: { width: `${Math.round((100 * (s.lastPage || 1)) / s.pageCount)}%` } })) : null,
             s.tags.length ? el('div', { class: 'tags' }, s.tags.map((t) => el('span', { class: 'tag', text: t }))) : null),
           el('div', { class: 'card-actions' },
             el('button', { class: 'ghost small', onclick: () => editScore(s) }, 'Edit'),
@@ -256,7 +268,7 @@ export async function renderLibrary(root, go) {
   // Redraw when another device's changes arrive; stop listening once we leave.
   const redraw = () => { if (root.contains(view)) draw(); else sync.offRemoteChange(redraw); };
   sync.onRemoteChange(redraw);
-  root._cleanup = () => { offStatus(); sync.offRemoteChange(redraw); };
+  root._cleanup = () => { app.off(); offStatus(); sync.offRemoteChange(redraw); };
 
   draw();
 }

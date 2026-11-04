@@ -1,11 +1,11 @@
 // Offline support. Network first so updates show up the next time you open the
 // app online; falls back to the cached copy when offline.
-const CACHE = 'score-stand-v3';
+const CACHE = 'score-stand-v7';
 const PRECACHE = [
-  './', 'index.html', 'app.css', 'manifest.webmanifest',
-  'js/app.js', 'js/config.js', 'js/db.js', 'js/ink.js', 'js/library.js', 'js/pdf.js', 'js/reader.js', 'js/sync.js', 'js/ui.js',
+  './', 'index.html', 'theme.css', 'app.css', 'manifest.webmanifest',
+  'js/app.js', 'js/config.js', 'js/db.js', 'js/ink.js', 'js/library.js', 'js/native.js', 'js/pdf.js', 'js/reader.js', 'js/sessions.js', 'js/sync.js', 'js/ui.js',
   'vendor/perfect-freehand.mjs', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
-  'icons/icon-192.png', 'icons/apple-touch-icon.png',
+  'icons/icon-192.png', 'icons/woodshed-mark.png', 'icons/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {
