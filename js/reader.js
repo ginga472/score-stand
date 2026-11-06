@@ -203,39 +203,20 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
     return { node, job };
   }
 
-  // ---- plan block: spotlight the bars it's about ----
-  // Nothing is drawn over those bars: the rest of the page fades a little instead, so every note
-  // stays readable. Tap the bars to adjust (drag to move, corner to resize), tap again to finish.
+  // ---- plan block: a thin outline around the bars it's about ----
+  // The outline sits in the white space around the bars (scripts/score_bars.py sizes each box to
+  // the ink in it), so it never crosses a note. Tap it to adjust (drag to move, corner to resize).
   let slots = [];
-  const SVG = 'http://www.w3.org/2000/svg';
-  const svg = (tag, attrs) => {
-    const n = document.createElementNS(SVG, tag);
-    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-    return n;
-  };
-  let spotSeq = 0;
   async function drawHighlights(pageEl, s, pageNum) {
     const hl = await highlights(s.id, pageNum);
-    pageEl.querySelectorAll('.plan-spot, .plan-hl').forEach((n) => n.remove());
+    pageEl.querySelectorAll('.plan-hl').forEach((n) => n.remove());
     showPlanLabel();
     if (!hl?.rects.length) return;
-    const maskId = `plan-mask-${++spotSeq}`;
-    const holes = hl.rects.map(() => svg('rect', { fill: 'black', rx: '0.004' }));
-    const spot = svg('svg', { class: 'plan-spot', viewBox: '0 0 1 1', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
-    const mask = svg('mask', { id: maskId, maskUnits: 'userSpaceOnUse', x: '0', y: '0', width: '1', height: '1' });
-    mask.append(svg('rect', { x: '0', y: '0', width: '1', height: '1', fill: 'white' }), ...holes);
-    const defs = svg('defs', {});
-    defs.append(mask);
-    spot.append(defs, svg('rect', { x: '0', y: '0', width: '1', height: '1', class: 'plan-veil', mask: `url(#${maskId})` }));
-    pageEl.append(spot);
-
-    hl.rects.forEach((r, j) => {
-      const hole = holes[j];
+    hl.rects.forEach((r) => {
       const grip = el('i', { class: 'plan-hl-grip', title: 'Drag to resize' });
       const box = el('div', { class: 'plan-hl' + (state.ink.enabled ? ' passive' : '') }, grip);
       const place = (q) => {
         Object.assign(box.style, { left: `${q.x * 100}%`, top: `${q.y * 100}%`, width: `${q.w * 100}%`, height: `${q.h * 100}%` });
-        hole.setAttribute('x', q.x); hole.setAttribute('y', q.y); hole.setAttribute('width', q.w); hole.setAttribute('height', q.h);
       };
       place(r);
       box.addEventListener('pointerdown', (e) => {
