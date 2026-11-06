@@ -65,6 +65,14 @@ def clean(n, name):
             "findings": strs(n.get("findings")), "next": strs(n.get("next")), **plan(n.get("plan"))}
 
 
+def boxes(a):
+    """[page, x, y, w, h] fractions from scripts/score_bars.py box; same checks as parseBoxes."""
+    ok = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1
+    rows = [r for r in a if isinstance(r, list) and len(r) == 5 and isinstance(r[0], int) and 1 <= r[0] <= 999
+            and all(ok(v) for v in r[1:]) and r[3] > 0.01 and r[4] > 0.01] if isinstance(a, list) else []
+    return [[r[0]] + [round(v, 4) for v in r[1:]] for r in rows][:6]
+
+
 def plan(p):
     """Optional next-session plan, same limits as parsePlan in js/sessions.js."""
     if not isinstance(p, dict) or not isinstance(p.get("blocks"), list):
@@ -73,7 +81,7 @@ def plan(p):
     num = lambda x, lo, hi: round(x) if isinstance(x, (int, float)) and not isinstance(x, bool) and lo <= x <= hi else None
     blocks = [{"label": s(b["label"], 120), "score": s(b.get("score"), 120), "page": num(b.get("page"), 1, 999),
                "bars": s(b.get("bars"), 40), "min": num(b.get("min"), 1, 30) or 10, "bpm": num(b.get("bpm"), 20, 240),
-               "goal": s(b.get("goal"), 200)}
+               "goal": s(b.get("goal"), 200), "boxes": boxes(b.get("boxes"))}
               for b in p["blocks"] if isinstance(b, dict) and s(b.get("label"), 120)][:4]
     return {"plan": {"note": s(p.get("note"), 200), "blocks": blocks}} if blocks else {}
 

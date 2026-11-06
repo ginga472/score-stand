@@ -50,7 +50,8 @@ function timeline(x) {
 //   {"woodshed": 1, "session": "session-….json", "by": "optional author", "headline": "…",
 //    "breakdown": [{"label": "…", "min": 6}], "findings": ["…"], "next": ["…"],
 //    "plan": {"note": "optional", "blocks": [{"label": "Bars 15–18 hands together", "score": "Sonatina Op. 55 No. 1",
-//             "page": 1, "bars": "15–18", "min": 10, "bpm": 30, "goal": "Slow enough that every note is right"}]}}
+//             "page": 1, "bars": "15–18", "min": 10, "bpm": 30, "goal": "Slow enough that every note is right",
+//             "boxes": [[1, 0.78, 0.43, 0.15, 0.10], [1, 0.07, 0.57, 0.51, 0.10]]}]}}
 //   ```
 // plan is optional: a suggestion for the next session, shown on the Music screen (js/plan.js).
 // Copy the message (or just the block) and tap "Paste notes". Synced notes arrive the same way.
@@ -75,6 +76,14 @@ export function parseNotes(text) {
   };
 }
 
+// Where the block's bars are, from scripts/score_bars.py: [page, x, y, w, h] as fractions of the page.
+export function parseBoxes(a) {
+  if (!Array.isArray(a)) return [];
+  const frac = (v) => Number.isFinite(v) && v >= 0 && v <= 1;
+  return a.filter((r) => Array.isArray(r) && r.length === 5 && Number.isInteger(r[0]) && r[0] >= 1 && r[0] <= 999
+    && r.slice(1).every(frac) && r[3] > 0.01 && r[4] > 0.01).slice(0, 6).map((r) => r.map((v, i) => (i ? Math.round(v * 1e4) / 1e4 : v)));
+}
+
 // Up to 4 blocks. Only the label is required; minutes default to 10, bpm is optional.
 function parsePlan(p) {
   if (!p || typeof p !== 'object' || !Array.isArray(p.blocks)) return null;
@@ -88,6 +97,7 @@ function parsePlan(p) {
     min: num(b.min, 1, 30) || 10,
     bpm: num(b.bpm, 20, 240),
     goal: str(b.goal, 200),
+    boxes: parseBoxes(b.boxes),
   }));
   return blocks.length ? { note: str(p.note, 200), blocks } : null;
 }

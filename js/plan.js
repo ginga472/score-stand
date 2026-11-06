@@ -56,6 +56,31 @@ async function findScore(name) {
   return bestScore >= 0.6 ? best : null;
 }
 
+// The running block's bars on this page of this score, as [{i, x, y, w, h}] page fractions, with
+// any box you moved by hand. Empty when no block is running or it's about another score or page.
+export async function highlights(scoreId, page) {
+  const running = native.practice().plan;
+  const plan = running && latestPlan();
+  if (!plan) return null;
+  const i = plan.blocks.findIndex((_, k) => blockId(plan, k) === running.id);
+  const b = plan.blocks[i];
+  if (!b?.boxes?.length) return null;
+  if ((await findScore(b.score))?.id !== scoreId) return null;
+  const moved = (await db.getMeta('planBoxes')) || {};
+  const rects = (moved.id === running.id && moved.boxes) || b.boxes;
+  return {
+    id: running.id, label: b.bars ? `Bars ${b.bars}` : b.label, goal: b.goal, all: rects,
+    rects: rects.map((r, k) => ({ k, x: r[1], y: r[2], w: r[3], h: r[4], page: r[0] })).filter((r) => r.page === page),
+  };
+}
+
+// Saves a box you dragged, for this block only (the next plan starts fresh).
+export async function moveBox(hl, k, rect) {
+  const boxes = hl.all.map((r, j) => (j === k ? [r[0], rect.x, rect.y, rect.w, rect.h] : r));
+  hl.all = boxes;
+  await db.setMeta('planBoxes', { id: hl.id, boxes });
+}
+
 const day = (ms) => {
   const d = new Date(ms), today = new Date();
   if (d.toDateString() === today.toDateString()) return "today's";

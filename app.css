@@ -240,3 +240,11 @@ button.warn { color: var(--bad); }
 .plan-clock { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 800; }
 .plan-done { color: var(--ok); font-weight: 800; }
 .plan-foot { margin: 10px 2px 0; font-size: 13px; }
+
+/* Plan block bars, outlined on the page while the block runs (drag to move, corner to resize) */
+.plan-hl { position: absolute; border: 3px solid rgba(255, 170, 40, 0.95); background: rgba(255, 189, 89, 0.14); border-radius: 6px; touch-action: none; cursor: move; z-index: 2; }
+.plan-hl.passive { pointer-events: none; }
+.plan-hl-tag { position: absolute; left: -3px; bottom: 100%; margin-bottom: 3px; max-width: 70vw; padding: 3px 10px; border-radius: 999px; background: #ffbd59; color: #2b1a05; font: 700 13px var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+.plan-hl-grip { position: absolute; right: -9px; bottom: -9px; width: 22px; height: 22px; border-radius: 50%; background: #ffbd59; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); cursor: nwse-resize; }
+.reader-bar .met-btn { min-width: 64px; }
+.reader-bar .met-btn.on { background: var(--accent); color: var(--accent-ink); }
