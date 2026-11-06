@@ -128,7 +128,41 @@ def barlines(ink, top, bottom, space):
     return [(g[0], g[-1]) for g in merged]
 
 
+def split(ink, a, b):
+    """The emptiest row between two systems (rows a..b), so each system keeps what's written near it."""
+    a, b = int(a), int(b)
+    if b <= a:
+        return (a + b) / 2
+    rows = ink[a:b].sum(axis=1)
+    best = rows.min()
+    quiet = np.flatnonzero(rows <= best)
+    return a + quiet[len(quiet) // 2]
+
+
+def reach(cols, top, bottom, upper, lower, space):
+    """How far the bar's ink goes above and below its staves. Walks outward row by row and stops at
+    a blank band nearly two staff spaces tall, so a title, tempo text or page number nearby isn't taken in."""
+    used = cols.any(axis=1)
+    gap = int(1.8 * space)
+
+    def walk(start, stop, step):
+        edge, blank, y = start, 0, start
+        while (y > stop) if step < 0 else (y < stop):
+            y += step
+            if used[int(y)]:
+                edge, blank = y, 0
+            else:
+                blank += 1
+                if blank > gap:
+                    break
+        return edge
+
+    return walk(int(top), int(upper), -1), walk(int(bottom), int(lower) - 1, 1)
+
+
 def find(pdf, first=1, from_page=1):
+    """Each bar gets the vertical extent of the ink actually in it (high notes, ledger lines,
+    fingerings, dynamics), not just the staves; the room between systems is shared at the emptiest row."""
     out, n = [], first
     for p, ink in enumerate(pages(pdf), start=1):
         if p < from_page:
@@ -136,17 +170,23 @@ def find(pdf, first=1, from_page=1):
             continue
         h, w = ink.shape
         page = {"page": p, "systems": []}
-        for top, bottom, space in systems(ink):
+        found = systems(ink)
+        for k, (top, bottom, space) in enumerate(found):
+            upper = split(ink, found[k - 1][1], top) if k else max(0, top - 7 * space)
+            lower = split(ink, bottom, found[k + 1][0]) if k + 1 < len(found) else min(h, bottom + 7 * space)
             lines = barlines(ink, top, bottom, space)
             bars = []
             for (_, a), (b, _) in zip(lines, lines[1:]):
                 if b - a < 6 * space:  # a start repeat after the clef, not a bar
                     continue
-                bars.append({"n": n, "x0": round(a / w, 4), "x1": round(b / w, 4)})
+                # A little to each side too: a note or slur can start right at the barline.
+                c0, c1 = int(max(0, a - space)), int(min(w, b + space))
+                y0, y1 = reach(ink[:, c0:c1], top, bottom, upper, lower, space)
+                pad = 0.6 * space
+                bars.append({"n": n, "x0": round(a / w, 4), "x1": round(b / w, 4),
+                             "y0": round(max(upper, y0 - pad) / h, 4), "y1": round(min(lower, y1 + pad) / h, 4)})
                 n += 1
-            pad = 2.8 * space  # room for notes above and below the staves
-            page["systems"].append({"y0": round(max(0, top - pad) / h, 4), "y1": round(min(h, bottom + pad) / h, 4),
-                                    "bars": bars})
+            page["systems"].append({"y0": round(upper / h, 4), "y1": round(lower / h, 4), "bars": bars})
         out.append(page)
     return out
 
@@ -158,7 +198,8 @@ def boxes(layout, lo, hi):
             sel = [b for b in s["bars"] if lo <= b["n"] <= hi]
             if sel:
                 x0, x1 = sel[0]["x0"], sel[-1]["x1"]
-                out.append([page["page"], x0, s["y0"], round(x1 - x0, 4), round(s["y1"] - s["y0"], 4)])
+                y0, y1 = min(b["y0"] for b in sel), max(b["y1"] for b in sel)
+                out.append([page["page"], x0, y0, round(x1 - x0, 4), round(y1 - y0, 4)])
     return out
 
 
@@ -184,8 +225,8 @@ def main(argv):
         d, (w, h) = ImageDraw.Draw(img), img.size
         for s in layout[p - 1]["systems"]:
             for b in s["bars"]:
-                d.rectangle([b["x0"] * w, s["y0"] * h, b["x1"] * w, s["y1"] * h], outline=(230, 140, 0), width=3)
-                d.text((b["x0"] * w + 4, s["y0"] * h + 2), str(b["n"]), fill=(200, 0, 0))
+                d.rectangle([b["x0"] * w, b["y0"] * h, b["x1"] * w, b["y1"] * h], outline=(230, 140, 0), width=3)
+                d.text((b["x0"] * w + 4, b["y0"] * h + 2), str(b["n"]), fill=(200, 0, 0))
         img.save(argv[3])
         print(f"saved {argv[3]}")
     else:
