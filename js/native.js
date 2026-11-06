@@ -38,21 +38,31 @@ export function readSession(name) {
 export const paste = () => post('session', { cmd: 'paste' });
 if (inApp) post('session', { cmd: 'list' });
 
+// Metronome and plan blocks (js/practice.js, loaded before this module). Null outside the app.
+const practiceApi = () => (inApp ? window.WoodshedPractice || null : null);
+export const metronomeButton = () => practiceApi()?.button() || null;
+export const practice = () => practiceApi()?.state || { metronome: { on: false }, plan: null };
+export const onPractice = (fn) => practiceApi()?.onChange(fn) || (() => {});
+export const startPlan = (block) => practiceApi()?.startPlan(block);
+export const endPlan = (reason) => practiceApi()?.endPlan(reason);
+
 // The bar at the top of every screen: the app's name, where you are, and the one Record button.
 // While recording, the red pill at the bottom of the screen is the stop control instead.
 // Outside the app (the Score Stand website) it shows just the name and whatever `end` holds.
 export function appBar(el, current, go, end = []) {
   const dest = [['music', 'Music', () => go('#/')], ['sprint', 'Chord Sprint', openChordSprint], ['sessions', 'Sessions', () => go('#/sessions')]];
   const rec = inApp ? el('button', { class: 'rec-btn', onclick: startRecording }, 'Record') : null;
+  const met = metronomeButton();
   const show = (st) => { if (rec) rec.hidden = st.recording; };
   show(state);
-  const off = onRecording(show);
+  const offRec = onRecording(show);
+  const off = () => { offRec(); met?._off?.(); };
   const bar = el('header', { class: 'appbar' },
     el('div', { class: 'brand' },
       el('img', { src: inApp ? 'icons/woodshed-mark.png' : 'icons/icon-192.png', alt: '' }),
       el('span', { text: inApp ? 'Woodshed' : 'Score Stand' })),
     inApp ? el('nav', { class: 'switch', 'aria-label': 'Screens' }, dest.map(([id, label, open]) =>
       el('button', { class: id === current ? 'on' : null, 'aria-current': id === current ? 'page' : null, onclick: id === current ? null : open }, label))) : null,
-    el('div', { class: 'appbar-end' }, end, rec));
+    el('div', { class: 'appbar-end' }, end, met, rec));
   return { bar, off };
 }

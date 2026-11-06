@@ -7,6 +7,7 @@ Needs WOODSHED_REVIEWER_EMAIL and WOODSHED_REVIEWER_PASSWORD in the environment.
   python3 -I woodshed_sessions.py list [N]               recent sessions, newest first
   python3 -I woodshed_sessions.py get NAME [OUT.json]     download one session file
   python3 -I woodshed_sessions.py notes NAME NOTES.json   save notes (the woodshed block's JSON)
+  python3 -I woodshed_sessions.py clicks FILE.json        metronome and plan-block summary of a downloaded session
 Uses only the standard library; HTTPS_PROXY and SSL_CERT_FILE are honored.
 """
 import json, os, re, ssl, sys, urllib.parse, urllib.request
@@ -61,7 +62,65 @@ def clean(n, name):
     return {"woodshed": 1, "session": name, "by": s(n.get("by", "Claude"), 40).strip(),
             "headline": s(n.get("headline"), 300),
             "breakdown": [{"label": b["label"][:120], "min": round(b["min"], 1)} for b in bd][:12],
-            "findings": strs(n.get("findings")), "next": strs(n.get("next"))}
+            "findings": strs(n.get("findings")), "next": strs(n.get("next")), **plan(n.get("plan"))}
+
+
+def plan(p):
+    """Optional next-session plan, same limits as parsePlan in js/sessions.js."""
+    if not isinstance(p, dict) or not isinstance(p.get("blocks"), list):
+        return {}
+    s = lambda x, m: x.strip()[:m] if isinstance(x, str) else ""
+    num = lambda x, lo, hi: round(x) if isinstance(x, (int, float)) and not isinstance(x, bool) and lo <= x <= hi else None
+    blocks = [{"label": s(b["label"], 120), "score": s(b.get("score"), 120), "page": num(b.get("page"), 1, 999),
+               "bars": s(b.get("bars"), 40), "min": num(b.get("min"), 1, 30) or 10, "bpm": num(b.get("bpm"), 20, 240),
+               "goal": s(b.get("goal"), 200)}
+              for b in p["blocks"] if isinstance(b, dict) and s(b.get("label"), 120)][:4]
+    return {"plan": {"note": s(p.get("note"), 200), "blocks": blocks}} if blocks else {}
+
+
+def clicks(path, tol=60):
+    """How closely the playing followed the built-in metronome, plus the plan blocks that were started.
+    Note onsets (chords grouped within 60 ms) are compared with the eighth-note grid of the clicks as
+    heard (downbeatMs + latencyMs). "with click" = within ±tol ms; chance = what random playing would get."""
+    import statistics as st
+    d = json.load(open(path))
+    marks = sorted(d.get("markers", []), key=lambda m: m.get("ms", 0))
+    end = d.get("durationMs", 0)
+    onsets = []
+    for e in d.get("events", []):
+        if e[1] & 0xF0 == 0x90 and e[3] > 0 and (not onsets or e[0] - onsets[-1] > 60):
+            onsets.append(e[0])
+    clock = lambda ms: f"{ms // 60000}:{ms // 1000 % 60:02d}"
+    runs = [m for m in marks if m.get("k") == "metronome"]
+    if not runs:
+        print("metronome: not used")
+    for i, m in enumerate(runs):
+        if not m.get("on"):
+            continue
+        stop = next((r["ms"] for r in runs[i + 1:]), end)
+        bpm, lat = m["bpm"], m.get("latencyMs", 0)
+        period = 60000 / bpm / 2
+        heard = m["downbeatMs"] + lat
+        on = [t for t in onsets if m["ms"] <= t < stop]
+        off = lambda t: (t - heard + period / 2) % period - period / 2  # signed: negative = ahead of the click
+        chance = min(1, 2 * tol / period)
+        print(f"metronome {clock(m['ms'])}-{clock(stop)} at {bpm} bpm (accent {m.get('beats')}, clicks/beat {m.get('sub')}), "
+              f"{len(on)} onsets, chance {chance:.0%}")
+        if not on:
+            continue
+        offs = [off(t) for t in on]
+        print(f"  overall: {sum(abs(o) <= tol for o in offs) / len(offs):.0%} with click, median {st.median(offs):+.0f} ms")
+        w = 20000
+        for a in range(m["ms"], stop, w):
+            win = [off(t) for t in on if a <= t < a + w]
+            if len(win) >= 4:
+                print(f"  {clock(a)}  {len(win):3} onsets  {sum(abs(o) <= tol for o in win) / len(win):4.0%} with click  "
+                      f"median {st.median(win):+5.0f} ms")
+    for m in marks:
+        k = m.get("k", "")
+        if k.startswith("plan_"):
+            extra = {x: m[x] for x in ("label", "bars", "min", "bpm", "reason", "playedMin") if x in m}
+            print(f"{k} {clock(m['ms'])} {m.get('id', '')} {json.dumps(extra, ensure_ascii=False)}")
 
 
 def main(argv):
@@ -89,6 +148,8 @@ def main(argv):
             notes = clean(json.load(f), r["name"])
         ok = http("POST", "/rest/v1/rpc/save_session_notes", {"p_name": r["name"], "p_notes": notes})
         print("saved" if ok else "not saved (no access to that session)")
+    elif cmd == "clicks" and len(argv) == 2:
+        clicks(argv[1])
     else:
         sys.exit(__doc__)
 

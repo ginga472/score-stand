@@ -5,6 +5,7 @@ import { openReader } from './reader.js';
 import { renderSessions } from './sessions.js';
 import { inApp, onRecording } from './native.js';
 import * as sync from './sync.js';
+import { trackPlan } from './plan.js';
 
 const root = document.getElementById('app');
 let cleanup = null;
@@ -38,6 +39,7 @@ async function route() {
 window.addEventListener('hashchange', route);
 route();
 sync.start();
+if (inApp) trackPlan();
 
 // A session that just stopped uploads (and Claude's notes come back) on the next sync; start it now.
 let wasRecording = false;

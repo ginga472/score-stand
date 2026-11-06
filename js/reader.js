@@ -70,11 +70,13 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   const halfBtn = el('button', { class: 'tool', title: 'Half-page turns', onclick: () => { prefs.halfTurn = !prefs.halfTurn; savePrefs(); state.half = false; render(); } }, '½');
   const penBtn = el('button', { class: 'tool', title: 'Markup', onclick: () => { state.ink.enabled = !state.ink.enabled; state.half = false; render(); } }, '✎');
   const spotBtn = el('button', { class: 'tool', title: 'Practice spots', onclick: () => toggleSpots() }, '◎');
+  const metBtn = native.metronomeButton();  // iPad app only
+  metBtn?.classList.add('tool');
 
   const topbar = el('header', { class: 'reader-bar' },
     el('button', { class: 'tool', title: 'Library', onclick: () => onExit() }, '‹ Library'),
     el('div', { class: 'reader-title' }, titleLabel, pageLabel),
-    el('div', { class: 'row' }, halfBtn, spotBtn, penBtn));
+    el('div', { class: 'row' }, metBtn, halfBtn, spotBtn, penBtn));
 
   const swatches = COLORS.map(([c, name]) =>
     el('button', { class: 'swatch', title: name, dataset: { color: c }, onclick: () => { state.ink.tool = 'pen'; state.ink.color = c; syncInkBar(); } }));
@@ -372,6 +374,7 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   return () => {
     document.removeEventListener('keydown', onKey);
     document.removeEventListener('visibilitychange', onVisible);
+    metBtn?._off?.();
     wakeLock?.release().catch(() => {});
     window.removeEventListener('resize', onResize);
     for (const p of docs.values()) p.then((d) => d.loadingTask.destroy()).catch(() => {});

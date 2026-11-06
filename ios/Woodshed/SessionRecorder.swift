@@ -112,7 +112,8 @@ final class SessionRecorder {
         if isActive { save(final: false) }
     }
 
-    private func ms(_ ticks: UInt64) -> Int {
+    /// Milliseconds from the session start to a host time (mach ticks). Later times are fine too.
+    func ms(_ ticks: UInt64) -> Int {
         let ns = SessionRecorder.nanoseconds(ticks)
         return ns > startNs ? Int((ns - startNs) / 1_000_000) : 0
     }
