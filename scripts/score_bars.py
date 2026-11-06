@@ -88,13 +88,36 @@ def staves(lines):
     return out
 
 
+def staff_ends(ink, top, space):
+    """Left and right end of a staff: the outermost columns where most of its five lines are dark
+    (one line can be broken near the start on a scan)."""
+    rows = [int(round(top + i * space)) for i in range(5)]
+    dark = sum(ink[max(0, r - 1):r + 2].any(axis=0).astype(int) for r in rows)
+    cols = np.flatnonzero(dark >= 3)
+    return (float(cols[0]), float(cols[-1])) if cols.size else None
+
+
+def joined(ink, top, bottom, space):
+    """True when a vertical line at the left end ties the two staves into one system."""
+    ends = staff_ends(ink, top, space)
+    if not ends:
+        return False
+    left = int(ends[0])
+    span = ink[int(top):int(bottom) + 1, max(0, left - int(space)):left + int(3 * space)]
+    span = span | np.roll(span, 1, axis=1)
+    return bool((span.mean(axis=0) > 0.8).any())
+
+
 def systems(ink):
-    """Grand staves: a treble staff with the bass staff close below it."""
+    """Grand staves: a staff and the one below it, joined by the system line at the left.
+    Checking the join (not just pairing staves in order) keeps one missed staff from
+    shifting every later pair."""
     st, out, k = staves(staff_lines(ink)), [], 0
     while k + 1 < len(st):
         top, nxt = st[k], st[k + 1]
-        if nxt[0] - top[1] < 12 * top[2]:
-            out.append((top[0], nxt[1], (top[2] + nxt[2]) / 2))
+        space = (top[2] + nxt[2]) / 2
+        if nxt[0] - top[1] < 12 * top[2] and joined(ink, top[0], nxt[1], space):
+            out.append((top[0], nxt[1], space))
             k += 2
         else:
             k += 1
@@ -110,10 +133,9 @@ def barlines(ink, top, bottom, space):
     full = span.mean(axis=0) > 0.8
     xs = [(a + b) / 2 for a, b in runs(full)]
     # The staves' own ends count as the first and last barline even when none is printed there.
-    row = ink[int(round(top)) - 1:int(round(top)) + 2].any(axis=0)
-    dark = np.flatnonzero(row)
-    if dark.size:
-        left, right = float(dark[0]), float(dark[-1])
+    ends = staff_ends(ink, top, space)
+    if ends:
+        left, right = ends
         if not xs or xs[0] - left > 1.6 * space:
             xs.insert(0, left)
         if xs[-1] < right - 4 * space:
