@@ -144,7 +144,7 @@ def find(pdf, first=1, from_page=1):
                     continue
                 bars.append({"n": n, "x0": round(a / w, 4), "x1": round(b / w, 4)})
                 n += 1
-            pad = 2.2 * space  # room for notes above and below the staves
+            pad = 2.8 * space  # room for notes above and below the staves
             page["systems"].append({"y0": round(max(0, top - pad) / h, 4), "y1": round(min(h, bottom + pad) / h, 4),
                                     "bars": bars})
         out.append(page)

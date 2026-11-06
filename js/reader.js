@@ -68,6 +68,7 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   // ---- DOM ----
   const pageLabel = el('span', { class: 'page-label' });
   const titleLabel = el('span', { class: 'title-label' });
+  const planLabel = el('span', { class: 'plan-label', hidden: true });  // the running plan block's bars and goal
   const halfBtn = el('button', { class: 'tool', title: 'Half-page turns', onclick: () => { prefs.halfTurn = !prefs.halfTurn; savePrefs(); state.half = false; render(); } }, '½');
   const penBtn = el('button', { class: 'tool', title: 'Markup', onclick: () => { state.ink.enabled = !state.ink.enabled; state.half = false; render(); } }, '✎');
   const spotBtn = el('button', { class: 'tool', title: 'Practice spots', onclick: () => toggleSpots() }, '◎');
@@ -76,7 +77,7 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
 
   const topbar = el('header', { class: 'reader-bar' },
     el('button', { class: 'tool', title: 'Library', onclick: () => onExit() }, '‹ Library'),
-    el('div', { class: 'reader-title' }, titleLabel, pageLabel),
+    el('div', { class: 'reader-title' }, titleLabel, pageLabel, planLabel),
     el('div', { class: 'row' }, metBtn, halfBtn, spotBtn, penBtn));
 
   const swatches = COLORS.map(([c, name]) =>
@@ -202,42 +203,75 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
     return { node, job };
   }
 
-  // ---- plan block: outline the bars it's about, on the page ----
-  // Drag a box to move it, or its corner to resize it, if it's a little off.
+  // ---- plan block: spotlight the bars it's about ----
+  // Nothing is drawn over those bars: the rest of the page fades a little instead, so every note
+  // stays readable. Tap the bars to adjust (drag to move, corner to resize), tap again to finish.
   let slots = [];
+  const SVG = 'http://www.w3.org/2000/svg';
+  const svg = (tag, attrs) => {
+    const n = document.createElementNS(SVG, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    return n;
+  };
+  let spotSeq = 0;
   async function drawHighlights(pageEl, s, pageNum) {
     const hl = await highlights(s.id, pageNum);
-    pageEl.querySelectorAll('.plan-hl').forEach((n) => n.remove());
-    if (!hl) return;
-    for (const r of hl.rects) {
-      const box = el('div', { class: 'plan-hl' + (state.ink.enabled ? ' passive' : '') },
-        r.k === hl.rects[0].k ? el('span', { class: 'plan-hl-tag' }, el('b', { text: hl.label }), hl.goal ? ` · ${hl.goal}` : '') : null,
-        el('i', { class: 'plan-hl-grip', title: 'Drag to resize' }));
-      const place = (q) => Object.assign(box.style, { left: `${q.x * 100}%`, top: `${q.y * 100}%`, width: `${q.w * 100}%`, height: `${q.h * 100}%` });
+    pageEl.querySelectorAll('.plan-spot, .plan-hl').forEach((n) => n.remove());
+    showPlanLabel();
+    if (!hl?.rects.length) return;
+    const maskId = `plan-mask-${++spotSeq}`;
+    const holes = hl.rects.map(() => svg('rect', { fill: 'black', rx: '0.004' }));
+    const spot = svg('svg', { class: 'plan-spot', viewBox: '0 0 1 1', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+    const mask = svg('mask', { id: maskId, maskUnits: 'userSpaceOnUse', x: '0', y: '0', width: '1', height: '1' });
+    mask.append(svg('rect', { x: '0', y: '0', width: '1', height: '1', fill: 'white' }), ...holes);
+    const defs = svg('defs', {});
+    defs.append(mask);
+    spot.append(defs, svg('rect', { x: '0', y: '0', width: '1', height: '1', class: 'plan-veil', mask: `url(#${maskId})` }));
+    pageEl.append(spot);
+
+    hl.rects.forEach((r, j) => {
+      const hole = holes[j];
+      const grip = el('i', { class: 'plan-hl-grip', title: 'Drag to resize' });
+      const box = el('div', { class: 'plan-hl' + (state.ink.enabled ? ' passive' : '') }, grip);
+      const place = (q) => {
+        Object.assign(box.style, { left: `${q.x * 100}%`, top: `${q.y * 100}%`, width: `${q.w * 100}%`, height: `${q.h * 100}%` });
+        hole.setAttribute('x', q.x); hole.setAttribute('y', q.y); hole.setAttribute('width', q.w); hole.setAttribute('height', q.h);
+      };
       place(r);
       box.addEventListener('pointerdown', (e) => {
         if (state.ink.enabled) return;
         e.preventDefault();
         box.setPointerCapture(e.pointerId);
-        const resize = e.target.classList.contains('plan-hl-grip');
+        const resize = e.target === grip;
         const W = pageEl.clientWidth, H = pageEl.clientHeight, sx = e.clientX, sy = e.clientY, from = { ...r };
         const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+        let moved = false;
         const onMove = (ev) => {
+          if (!box.classList.contains('adjust')) return;
           const dx = (ev.clientX - sx) / W, dy = (ev.clientY - sy) / H;
+          moved = moved || Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 4;
           if (resize) { r.w = clamp(from.w + dx, 0.03, 1 - r.x); r.h = clamp(from.h + dy, 0.03, 1 - r.y); }
           else { r.x = clamp(from.x + dx, 0, 1 - r.w); r.y = clamp(from.y + dy, 0, 1 - r.h); }
           place(r);
         };
         const onUp = () => {
           box.removeEventListener('pointermove', onMove);
-          if (r.x !== from.x || r.y !== from.y || r.w !== from.w || r.h !== from.h) moveBox(hl, r.k, r);
+          if (moved) moveBox(hl, r.k, r);
+          else box.classList.toggle('adjust');  // a tap switches adjusting on and off
         };
         box.addEventListener('pointermove', onMove);
         box.addEventListener('pointerup', onUp, { once: true });
         box.addEventListener('pointercancel', onUp, { once: true });
       });
       pageEl.append(box);
-    }
+    });
+  }
+  async function showPlanLabel() {
+    const hl = await highlights(score().id, state.page);
+    const next = hl ? null : await highlights(score().id, state.page + 1);
+    const h = hl || next;
+    planLabel.hidden = !h;
+    if (h) planLabel.textContent = `◎ ${h.label}${h.goal ? ` · ${h.goal}` : ''}`;
   }
   const offPractice = native.onPractice(() => { for (const x of slots) drawHighlights(x.pageEl, x.score, x.pageNum); });
 
