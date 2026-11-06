@@ -4,6 +4,7 @@ import { loadPdf, makeThumb } from './pdf.js';
 import { el, clear, fill, promptForm, confirmBox, toast } from './ui.js';
 import * as sync from './sync.js';
 import * as native from './native.js';
+import { planCard } from './plan.js';
 
 const MAX_PDF_BYTES = 80 * 1024 * 1024;
 let tab = 'scores';
@@ -61,9 +62,11 @@ export async function renderLibrary(root, go) {
 
   const importBtn = el('button', { class: 'primary', onclick: () => fileInput.click() }, '+ Import PDF');
   const app = native.appBar(el, 'music', go);
+  const plan = planCard(go);
 
   const view = el('div', { class: 'library' },
     app.bar,
+    plan.node,
     el('div', { class: 'page-head' }, el('h1', { text: 'Music' }), tabBar),
     fileInput,
     body);
@@ -268,7 +271,7 @@ export async function renderLibrary(root, go) {
   // Redraw when another device's changes arrive; stop listening once we leave.
   const redraw = () => { if (root.contains(view)) draw(); else sync.offRemoteChange(redraw); };
   sync.onRemoteChange(redraw);
-  root._cleanup = () => { app.off(); offStatus(); sync.offRemoteChange(redraw); };
+  root._cleanup = () => { app.off(); plan.off(); offStatus(); sync.offRemoteChange(redraw); };
 
   draw();
 }

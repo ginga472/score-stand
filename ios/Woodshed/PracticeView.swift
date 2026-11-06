@@ -10,12 +10,14 @@ struct PracticeView: UIViewControllerRepresentable {
 /// Hosts the two screens as web views (Music = Score Stand, Chord Sprint), feeds Chord Sprint the
 /// piano, and owns practice-session recording so it keeps running whichever screen is showing.
 ///
-/// Pages talk to the app through three message handlers:
-///   nav     {to: "music" | "sprint"}
-///   session {cmd: "start" | "stop" | "marker" | "list" | "delete" | "share", ...}
-///   store   Chord Sprint settings and stats (JSON string, kept in UserDefaults)
-/// and the app calls back window.midiIn(status, d1, d2), window.midiDevices([names]) and
-/// window.sessionState({recording, startedMs, sessions, event}).
+/// Pages talk to the app through four message handlers:
+///   nav      {to: "music" | "sprint"}
+///   session  {cmd: "start" | "stop" | "marker" | "list" | "delete" | "share", ...}
+///   practice {cmd: "metronome" | "plan_start" | "plan_end" | "state", ...}
+///   store    Chord Sprint settings and stats (JSON string, kept in UserDefaults)
+/// and the app calls back window.midiIn(status, d1, d2), window.midiDevices([names]),
+/// window.sessionState({recording, startedMs, sessions, event}) and
+/// window.practiceState({metronome, plan, event}).
 final class PracticeViewController: UIViewController, WKScriptMessageHandler, WKNavigationDelegate {
     enum Screen: String { case music, sprint }
     private static let storeKey = "chordSprintStore"
@@ -24,12 +26,30 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
     private let scheme = LocalSchemeHandler()
     private let midi = MIDIInput()
     private let recorder = SessionRecorder()
+    private let metronome = Metronome()
+    private static let metronomeKey = "metronome"
     private var music: WKWebView!
     private var sprint: WKWebView!
     private var loaded: Set<ObjectIdentifier> = []
     private var screen: Screen = .music
     private let pill = UIButton(type: .system)
     private var pillTimer: Timer?
+    private let pills = UIStackView()
+    private let metroPill = UIButton(type: .system)
+    private let planPill = UIButton(type: .system)
+
+    /// The plan block being worked on, if any: a soft timer, nothing is locked.
+    private struct PlanBlock {
+        let id: String
+        let label: String
+        let goal: String
+        let minutes: Int
+        let started: Date
+        var ends: Date
+        var chimed = false
+    }
+    private var plan: PlanBlock?
+    private var planTimer: Timer?
 
     override var prefersStatusBarHidden: Bool { true }
 
@@ -40,7 +60,8 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         music = makeWebView(page: "index.html", scrolls: true)
         sprint = makeWebView(page: "chord-sprint/index.html", scrolls: false,
                              extraScript: "window.__nativeStore = \(Self.json(saved));")
-        setUpPill()
+        setUpPills()
+        restoreMetronome()
 
         midi.onMessages = { [weak self] messages in
             guard let self else { return }
@@ -57,6 +78,8 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         let center = NotificationCenter.default
         center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
+                // The click can't sound in the background; stop it so the session file stays true.
+                if self?.metronome.isOn == true { self?.setMetronome(on: false) }
                 self?.recorder.addMarker(["k": "app_inactive"])
                 self?.recorder.flush()
                 self?.sprint.evaluateJavaScript("window.screenShown && window.screenShown(false);", completionHandler: nil)
@@ -77,6 +100,9 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
 
         // A session the app was closed in the middle of carries on where it left off.
         if recorder.resumeIfRecent(within: Self.idleLimit) { updatePill() }
+        planTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tickPlan() }
+        }
         // The app, not a page, decides when a forgotten session ends: it hears every key on every screen.
         idleTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.stopIfIdle() }
@@ -94,7 +120,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         content.addUserScript(WKUserScript(source: "window.__pianoApp = true;" + extraScript,
                                            injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let relay = WeakMessageHandler(self)
-        for name in ["nav", "session", "store"] { content.add(relay, name: name) }
+        for name in ["nav", "session", "store", "practice"] { content.add(relay, name: name) }
 
         let web = WKWebView(frame: view.bounds, configuration: config)
         web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -136,7 +162,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         (next == .music ? music : sprint)?.becomeFirstResponder()  // so a page-turn pedal reaches the reader
         UserDefaults.standard.set(next.rawValue, forKey: Self.screenKey)
         recorder.addMarker(["k": "screen", "to": next.rawValue])
-        view.bringSubviewToFront(pill)
+        view.bringSubviewToFront(pills)
     }
 
     private func broadcast(_ js: String) {
@@ -150,6 +176,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         if webView == sprint { tellSprintIfShown() }
         webView.evaluateJavaScript("window.midiDevices && window.midiDevices(\(Self.json(midi.sourceNames())));", completionHandler: nil)
         sendSession(event: nil)
+        sendPractice(event: nil)
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -189,6 +216,8 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
             show(next)
         case "session":
             if let body = message.body as? [String: Any] { handleSession(body) }
+        case "practice":
+            if let body = message.body as? [String: Any] { handlePractice(body) }
         default:
             break
         }
@@ -198,9 +227,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         switch body["cmd"] as? String {
         case "start":
             guard !recorder.isActive else { sendSession(event: nil); break }  // a second tap never restarts a session
-            recorder.start(devices: midi.sourceNames())
-            recorder.addMarker(["k": "screen", "to": screen.rawValue])
-            sendSession(event: "started")
+            startRecording()
         case "stop":
             recorder.stop()
             sendSession(event: "stopped")
@@ -255,23 +282,42 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         (presentedViewController ?? self).present(sheet, animated: true)
     }
 
-    // MARK: Recording indicator (visible on every screen while recording)
+    // MARK: Pills along the bottom (visible on every screen): plan timer, metronome, recording
 
-    private func setUpPill() {
+    private func setUpPills() {
+        pills.axis = .horizontal
+        pills.spacing = 10
+        pills.alignment = .center
+        pills.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(pills)
+        NSLayoutConstraint.activate([
+            pills.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            pills.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10),
+        ])
+        style(planPill, background: UIColor(red: 1, green: 0.741, blue: 0.349, alpha: 1),     // theme.css --accent
+              foreground: UIColor(red: 0.169, green: 0.102, blue: 0.02, alpha: 1))
+        style(metroPill, background: UIColor(red: 0.157, green: 0.188, blue: 0.345, alpha: 1), // --raised
+              foreground: UIColor(red: 0.957, green: 0.925, blue: 0.863, alpha: 1))
+        style(pill, background: UIColor(red: 0.85, green: 0.22, blue: 0.2, alpha: 1), foreground: .white)
+        planPill.addTarget(self, action: #selector(planPillTapped), for: .touchUpInside)
+        metroPill.addTarget(self, action: #selector(metroPillTapped), for: .touchUpInside)
+        pill.addTarget(self, action: #selector(pillTapped), for: .touchUpInside)
+        for p in [planPill, metroPill, pill] { p.isHidden = true; pills.addArrangedSubview(p) }
+    }
+
+    private func style(_ button: UIButton, background: UIColor, foreground: UIColor) {
         var config = UIButton.Configuration.filled()
-        config.baseBackgroundColor = UIColor(red: 0.85, green: 0.22, blue: 0.2, alpha: 1)
-        config.baseForegroundColor = .white
+        config.baseBackgroundColor = background
+        config.baseForegroundColor = foreground
         config.cornerStyle = .capsule
         config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
-        pill.configuration = config
-        pill.isHidden = true
-        pill.translatesAutoresizingMaskIntoConstraints = false
-        pill.addTarget(self, action: #selector(pillTapped), for: .touchUpInside)
-        view.addSubview(pill)
-        NSLayoutConstraint.activate([
-            pill.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            pill.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10),
-        ])
+        button.configuration = config
+    }
+
+    private func setTitle(_ button: UIButton, _ text: String) {
+        var title = AttributedString(text)
+        title.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+        button.configuration?.attributedTitle = title
     }
 
     private func updatePill() {
@@ -290,9 +336,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         let clock = seconds >= 3600
             ? String(format: "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
             : String(format: "%d:%02d", seconds / 60, seconds % 60)
-        var title = AttributedString("●  Recording \(clock)")
-        title.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
-        pill.configuration?.attributedTitle = title
+        setTitle(pill, "●  Recording \(clock)")
     }
 
     @objc private func pillTapped() {
@@ -305,6 +349,159 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
             self?.sendSession(event: "stopped")
         })
         present(alert, animated: true)
+    }
+
+    // MARK: Metronome and plan blocks
+
+    private func startRecording() {
+        recorder.start(devices: midi.sourceNames())
+        recorder.addMarker(["k": "screen", "to": screen.rawValue])
+        if metronome.isOn { recorder.addMarker(metronomeMarker()) }
+        if let plan { recorder.addMarker(["k": "plan_start", "id": plan.id, "label": plan.label, "min": plan.minutes, "continued": true]) }
+        sendSession(event: "started")
+    }
+
+    private func handlePractice(_ body: [String: Any]) {
+        switch body["cmd"] as? String {
+        case "metronome":
+            var s = metronome.settings
+            if let v = body["bpm"] as? Double { s.bpm = Int(v.rounded()) }
+            if let v = body["beats"] as? Double { s.beats = Int(v) }
+            if let v = body["sub"] as? Double { s.sub = Int(v) }
+            if let v = body["volume"] as? Double { s.volume = v }
+            setMetronome(on: body["on"] as? Bool ?? metronome.isOn, settings: s)
+        case "plan_start":
+            startPlan(body)
+        case "plan_end":
+            endPlan(reason: Self.text(body["reason"], 20) == "skipped" ? "skipped" : "done")
+        default:
+            sendPractice(event: nil)
+        }
+    }
+
+    private func setMetronome(on: Bool, settings: Metronome.Settings? = nil) {
+        let wasOn = metronome.isOn, before = metronome.settings
+        metronome.update(on: on, settings: settings ?? before)
+        let s = metronome.settings
+        UserDefaults.standard.set(["bpm": s.bpm, "beats": s.beats, "sub": s.sub, "volume": s.volume] as [String: Any], forKey: Self.metronomeKey)
+        // Volume alone doesn't change the timing, so it isn't worth a marker.
+        var timing = s
+        timing.volume = before.volume
+        if metronome.isOn != wasOn || timing != before { recorder.addMarker(metronomeMarker()) }
+        sendPractice(event: nil)
+    }
+
+    private func restoreMetronome() {
+        guard let saved = UserDefaults.standard.dictionary(forKey: Self.metronomeKey) else { return }
+        var s = Metronome.Settings()
+        if let v = saved["bpm"] as? Int { s.bpm = v }
+        if let v = saved["beats"] as? Int { s.beats = v }
+        if let v = saved["sub"] as? Int { s.sub = v }
+        if let v = saved["volume"] as? Double { s.volume = v }
+        metronome.update(on: false, settings: s)
+    }
+
+    /// What goes in the session file: clicks fall every 60000 / bpm / sub ms, forwards and backwards
+    /// from downbeatMs (beat 1 of a bar), until the next metronome marker.
+    private func metronomeMarker() -> [String: Any] {
+        let s = metronome.settings
+        guard metronome.isOn else { return ["k": "metronome", "on": false] }
+        return ["k": "metronome", "on": true, "bpm": s.bpm, "beats": s.beats, "sub": s.sub,
+                "downbeatMs": recorder.ms(metronome.nextDownbeatTicks()), "latencyMs": metronome.latencyMs]
+    }
+
+    private static func text(_ value: Any?, _ limit: Int) -> String {
+        String(((value as? String) ?? "").prefix(limit))
+    }
+
+    private func startPlan(_ body: [String: Any]) {
+        if plan != nil { endPlan(reason: "switched") }
+        let minutes = min(60, max(1, Int((body["min"] as? Double ?? 10).rounded())))
+        let block = PlanBlock(id: Self.text(body["id"], 80), label: Self.text(body["label"], 120),
+                              goal: Self.text(body["goal"], 200), minutes: minutes,
+                              started: Date(), ends: Date().addingTimeInterval(Double(minutes) * 60))
+        // A plan block is practice worth reviewing: record it if nothing is recording yet.
+        if !recorder.isActive { startRecording() }
+        plan = block
+        var marker: [String: Any] = ["k": "plan_start", "id": block.id, "label": block.label, "min": minutes]
+        if let bars = body["bars"] as? String { marker["bars"] = String(bars.prefix(40)) }
+        if let bpm = body["bpm"] as? Double, bpm >= 20, bpm <= 240 {
+            marker["bpm"] = Int(bpm.rounded())
+            var s = metronome.settings
+            s.bpm = Int(bpm.rounded())
+            recorder.addMarker(marker)
+            setMetronome(on: true, settings: s)
+        } else {
+            recorder.addMarker(marker)
+        }
+        tickPlan()
+        sendPractice(event: nil)
+    }
+
+    private func endPlan(reason: String) {
+        guard let block = plan else { return }
+        plan = nil
+        recorder.addMarker(["k": "plan_end", "id": block.id, "reason": reason,
+                            "playedMin": (Date().timeIntervalSince(block.started) / 6).rounded() / 10])
+        tickPlan()
+        sendPractice(event: ["planEnded": block.id, "reason": reason])
+    }
+
+    private func tickPlan() {
+        guard var block = plan else { planPill.isHidden = true; return }
+        let left = Int(block.ends.timeIntervalSinceNow.rounded(.up))
+        if left <= 0 {
+            if !block.chimed {
+                block.chimed = true
+                plan = block
+                metronome.chime()
+                recorder.addMarker(["k": "plan_time_up", "id": block.id])
+                sendPractice(event: nil)
+            }
+            setTitle(planPill, "◎  Time's up · \(block.label)")
+        } else {
+            setTitle(planPill, String(format: "◎  %@ · %d:%02d", block.label, left / 60, left % 60))
+        }
+        planPill.isHidden = false
+    }
+
+    @objc private func planPillTapped() {
+        guard let block = plan else { return }
+        let left = block.ends.timeIntervalSinceNow
+        let status = left > 0 ? "\(Int((left / 60).rounded(.up))) min left of \(block.minutes)." : "Your \(block.minutes) minutes are up. Keep going if it's useful."
+        let alert = UIAlertController(title: block.label, message: [block.goal, status].filter { !$0.isEmpty }.joined(separator: "\n\n"),
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Keep going", style: .cancel))
+        alert.addAction(UIAlertAction(title: "5 more minutes", style: .default) { [weak self] _ in
+            guard let self, var b = self.plan else { return }
+            b.ends = max(b.ends, Date()).addingTimeInterval(5 * 60)
+            b.chimed = false
+            self.plan = b
+            self.recorder.addMarker(["k": "plan_extend", "id": b.id, "min": 5])
+            self.tickPlan()
+            self.sendPractice(event: nil)
+        })
+        alert.addAction(UIAlertAction(title: "Done with this", style: .default) { [weak self] _ in
+            self?.endPlan(reason: "done")
+        })
+        present(alert, animated: true)
+    }
+
+    @objc private func metroPillTapped() {
+        setMetronome(on: false)
+    }
+
+    private func sendPractice(event: [String: Any]?) {
+        let s = metronome.settings
+        metroPill.isHidden = !metronome.isOn
+        if metronome.isOn { setTitle(metroPill, "♩ = \(s.bpm)  ■") }
+        var state: [String: Any] = [
+            "metronome": ["on": metronome.isOn, "bpm": s.bpm, "beats": s.beats, "sub": s.sub, "volume": s.volume] as [String: Any],
+            "plan": plan.map { ["id": $0.id, "label": $0.label, "endsMs": $0.ends.timeIntervalSince1970 * 1000,
+                                "over": $0.chimed] as [String: Any] as Any } ?? NSNull(),
+        ]
+        if let event { state["event"] = event }
+        broadcast("window.practiceState && window.practiceState(\(Self.json(state)));")
     }
 
     static func json(_ value: Any) -> String {

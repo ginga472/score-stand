@@ -218,3 +218,35 @@ button.warn { color: var(--bad); }
   .review-body { grid-template-columns: 1fr; }
   .brow .bbar { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* ---------- Plan for today (Music screen, iPad app) ---------- */
+.plan { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--lift); padding: 16px 18px; }
+.plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.plan-head h2 { margin: 0; font: 800 22px var(--display); }
+.plan-head p { margin: 4px 0 0; }
+.plan.folded { padding: 10px 18px; }
+.plan.folded h2 { font-size: 18px; }
+.plan-note { margin: 10px 0 0; }
+.plan-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.plan-block { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--well); }
+.plan-block.live { outline: 2px solid var(--accent); }
+.plan-block.done { opacity: 0.6; }
+.plan-num { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); font: 800 15px var(--body); }
+.plan-block.live .plan-num { background: var(--accent); color: var(--accent-ink); }
+.plan-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.plan-text strong { font-size: 17px; }
+.plan-goal { color: var(--ink); font-size: 14px; }
+.plan-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.plan-clock { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 800; }
+.plan-done { color: var(--ok); font-weight: 800; }
+.plan-foot { margin: 10px 2px 0; font-size: 13px; }
+
+/* Plan block bars while the block runs: a thin outline in the white space around them. */
+.plan-hl { position: absolute; z-index: 3; border: 1.5px solid rgba(232, 140, 20, 0.9); border-radius: 4px; touch-action: none; }
+.plan-hl.passive { pointer-events: none; }
+.plan-hl.adjust { border-style: dashed; cursor: move; }
+.plan-hl-grip { display: none; position: absolute; right: -12px; bottom: -12px; width: 20px; height: 20px; border-radius: 50%; background: #ffbd59; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); cursor: nwse-resize; }
+.plan-hl.adjust .plan-hl-grip { display: block; }
+.plan-label { margin-top: 2px; padding: 2px 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font: 700 13px var(--body); max-width: 60vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reader-bar .met-btn { min-width: 64px; }
+.reader-bar .met-btn.on { background: var(--accent); color: var(--accent-ink); }

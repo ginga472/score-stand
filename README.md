@@ -21,6 +21,9 @@ Everything is stored on the device in IndexedDB. When you sign in (top of the li
 
 `ios/Woodshed.xcodeproj` (the Woodshed app) wraps the reader and Chord Sprint into one iPad app that also hears the piano over USB and can record practice sessions. Open it in Xcode, pick your Team under Signing & Capabilities, plug in the iPad and Run. With a free Apple ID, run it again every 7 days.
 
+- **Metronome**: the ♩ button in the top bar (and in the reader). The click is scheduled on the same clock as the piano's MIDI, and while recording, every start, stop and tempo change goes into the session file (`metronome` markers with `bpm` and a `downbeatMs`), so a review can tell where the playing stayed with the click. `scripts/woodshed_sessions.py clicks FILE` summarizes it.
+- **Plan for today**: a review's notes can carry a `plan` of up to 4 short blocks (label, score, page, bars, minutes, optional bpm, goal). The Music screen shows it; Start opens the score, sets the click, records, and runs a soft timer that chimes when time's up. Blocks can be done in any order, stretched, skipped, or folded away. A block's optional `boxes` (from `scripts/score_bars.py box PDF 15-18`, which finds the barlines in the PDF) get a thin outline in the white space around them while it runs (each box is sized to the ink in its bars, so the line never crosses a note). Tap the bars to adjust: drag to move, corner to resize.
+
 ## Running locally
 
 ```sh
@@ -47,9 +50,11 @@ js/pdf.js           pdf.js wrapper
 js/db.js            IndexedDB
 js/ui.js            DOM helpers (textContent only, no innerHTML)
 js/native.js        bridge to the iPad app (no-op in a browser)
+js/practice.js      metronome panel + plan-timer bridge (plain script, shared with Chord Sprint)
+js/plan.js          "Plan for today" card on the Music screen
 chord-sprint/       chord sight-reading game
 supabase/           sync schema, session sync + reviewer account (sessions.sql, setup-sessions.sh)
-scripts/            woodshed_sessions.py: Claude's client for reviewing sessions
+scripts/            woodshed_sessions.py: Claude's client for reviewing sessions; score_bars.py: bar finder for plan boxes
 ios/                iPad app (Swift: web view shell, USB MIDI, session recorder)
 vendor/             pdf.js 6.4.299 (legacy build), perfect-freehand 1.2.3
 ```

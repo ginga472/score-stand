@@ -7,6 +7,7 @@ import { loadPdf, renderPage } from './pdf.js';
 import { attachInk, drawStrokes } from './ink.js';
 import { el, clear, fill, promptForm, toast } from './ui.js';
 import * as native from './native.js';
+import { highlights, moveBox } from './plan.js';
 
 const NEXT_KEYS = new Set(['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter']);
 const PREV_KEYS = new Set(['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace']);
@@ -67,14 +68,17 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   // ---- DOM ----
   const pageLabel = el('span', { class: 'page-label' });
   const titleLabel = el('span', { class: 'title-label' });
+  const planLabel = el('span', { class: 'plan-label', hidden: true });  // the running plan block's bars and goal
   const halfBtn = el('button', { class: 'tool', title: 'Half-page turns', onclick: () => { prefs.halfTurn = !prefs.halfTurn; savePrefs(); state.half = false; render(); } }, '½');
   const penBtn = el('button', { class: 'tool', title: 'Markup', onclick: () => { state.ink.enabled = !state.ink.enabled; state.half = false; render(); } }, '✎');
   const spotBtn = el('button', { class: 'tool', title: 'Practice spots', onclick: () => toggleSpots() }, '◎');
+  const metBtn = native.metronomeButton();  // iPad app only
+  metBtn?.classList.add('tool');
 
   const topbar = el('header', { class: 'reader-bar' },
     el('button', { class: 'tool', title: 'Library', onclick: () => onExit() }, '‹ Library'),
-    el('div', { class: 'reader-title' }, titleLabel, pageLabel),
-    el('div', { class: 'row' }, halfBtn, spotBtn, penBtn));
+    el('div', { class: 'reader-title' }, titleLabel, pageLabel, planLabel),
+    el('div', { class: 'row' }, metBtn, halfBtn, spotBtn, penBtn));
 
   const swatches = COLORS.map(([c, name]) =>
     el('button', { class: 'swatch', title: name, dataset: { color: c }, onclick: () => { state.ink.tool = 'pen'; state.ink.color = c; syncInkBar(); } }));
@@ -149,6 +153,7 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
       pageLabel.textContent = `${state.page} / ${pdf.numPages}`;
     }
 
+    slots = [];
     fill(stage, frag);
     await Promise.all(jobs.map((j) => j()));
     if (seq !== renderSeq) return;
@@ -161,13 +166,16 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   function makeSlot(s, pageNum, w, h, half) {
     const pdfCanvas = el('canvas', { class: 'pdf' });
     const inkCanvas = el('canvas', { class: 'ink' });
-    const node = el('div', { class: 'page-slot' + (half ? ` half-${half}` : '') }, el('div', { class: 'page' }, pdfCanvas, inkCanvas));
+    const pageEl = el('div', { class: 'page' }, pdfCanvas, inkCanvas);
+    const node = el('div', { class: 'page-slot' + (half ? ` half-${half}` : '') }, pageEl);
     let size = { width: 0, height: 0 };
     const job = async () => {
       const pdf = await docFor(s);
       size = await renderPage(pdf, pageNum, pdfCanvas, w - 8, h - 8);
       const strokes = await inkFor(s.id, pageNum);
       drawStrokes(inkCanvas, strokes, size.width, size.height);
+      slots.push({ pageEl, score: s, pageNum });
+      drawHighlights(pageEl, s, pageNum);
       if (half) {
         // Clip with CSSOM (allowed under our CSP) rather than inline style attributes.
         node.style.clipPath = half === 'top' ? 'inset(0 0 50% 0)' : 'inset(50% 0 0 0)';
@@ -194,6 +202,59 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
     };
     return { node, job };
   }
+
+  // ---- plan block: a thin outline around the bars it's about ----
+  // The outline sits in the white space around the bars (scripts/score_bars.py sizes each box to
+  // the ink in it), so it never crosses a note. Tap it to adjust (drag to move, corner to resize).
+  let slots = [];
+  async function drawHighlights(pageEl, s, pageNum) {
+    const hl = await highlights(s.id, pageNum);
+    pageEl.querySelectorAll('.plan-hl').forEach((n) => n.remove());
+    showPlanLabel();
+    if (!hl?.rects.length) return;
+    hl.rects.forEach((r) => {
+      const grip = el('i', { class: 'plan-hl-grip', title: 'Drag to resize' });
+      const box = el('div', { class: 'plan-hl' + (state.ink.enabled ? ' passive' : '') }, grip);
+      const place = (q) => {
+        Object.assign(box.style, { left: `${q.x * 100}%`, top: `${q.y * 100}%`, width: `${q.w * 100}%`, height: `${q.h * 100}%` });
+      };
+      place(r);
+      box.addEventListener('pointerdown', (e) => {
+        if (state.ink.enabled) return;
+        e.preventDefault();
+        box.setPointerCapture(e.pointerId);
+        const resize = e.target === grip;
+        const W = pageEl.clientWidth, H = pageEl.clientHeight, sx = e.clientX, sy = e.clientY, from = { ...r };
+        const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+        let moved = false;
+        const onMove = (ev) => {
+          if (!box.classList.contains('adjust')) return;
+          const dx = (ev.clientX - sx) / W, dy = (ev.clientY - sy) / H;
+          moved = moved || Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 4;
+          if (resize) { r.w = clamp(from.w + dx, 0.03, 1 - r.x); r.h = clamp(from.h + dy, 0.03, 1 - r.y); }
+          else { r.x = clamp(from.x + dx, 0, 1 - r.w); r.y = clamp(from.y + dy, 0, 1 - r.h); }
+          place(r);
+        };
+        const onUp = () => {
+          box.removeEventListener('pointermove', onMove);
+          if (moved) moveBox(hl, r.k, r);
+          else box.classList.toggle('adjust');  // a tap switches adjusting on and off
+        };
+        box.addEventListener('pointermove', onMove);
+        box.addEventListener('pointerup', onUp, { once: true });
+        box.addEventListener('pointercancel', onUp, { once: true });
+      });
+      pageEl.append(box);
+    });
+  }
+  async function showPlanLabel() {
+    const hl = await highlights(score().id, state.page);
+    const next = hl ? null : await highlights(score().id, state.page + 1);
+    const h = hl || next;
+    planLabel.hidden = !h;
+    if (h) planLabel.textContent = `◎ ${h.label}${h.goal ? ` · ${h.goal}` : ''}`;
+  }
+  const offPractice = native.onPractice(() => { for (const x of slots) drawHighlights(x.pageEl, x.score, x.pageNum); });
 
   let lastInkPage = null;
   function doUndo() {
@@ -262,6 +323,7 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
 
   function onTap(e) {
     if (swiped) { swiped = false; return; } // the click that ends a swipe isn't a tap
+    if (e.target.closest('.plan-hl')) return;  // moving a plan box isn't a page turn
     if (!spotsPanel.hidden) { toggleSpots(); return; }
     if (e.target.closest('.ink.live') && !(state.ink.pencilOnly && lastPointer === 'touch')) return;
     const r = stage.getBoundingClientRect();
@@ -282,7 +344,7 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   const isDrawing = (e) => state.ink.enabled && !(state.ink.pencilOnly && e.pointerType === 'touch');
   stage.addEventListener('pointerdown', (e) => {
     swiped = false;
-    swipeStart = isDrawing(e) || !spotsPanel.hidden ? null : { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId };
+    swipeStart = isDrawing(e) || !spotsPanel.hidden || e.target.closest('.plan-hl') ? null : { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId };
   }, true);
   stage.addEventListener('pointerup', (e) => {
     const s = swipeStart;
@@ -372,6 +434,8 @@ export async function openReader(root, { scoreIds, startIndex = 0, startPage, ti
   return () => {
     document.removeEventListener('keydown', onKey);
     document.removeEventListener('visibilitychange', onVisible);
+    metBtn?._off?.();
+    offPractice();
     wakeLock?.release().catch(() => {});
     window.removeEventListener('resize', onResize);
     for (const p of docs.values()) p.then((d) => d.loadingTask.destroy()).catch(() => {});
