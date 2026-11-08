@@ -141,8 +141,15 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
     static let idleLimit: TimeInterval = 20 * 60
     private var idleTimer: Timer?
 
+    /// A paused session waits longer (you stepped away on purpose), but not forever.
+    static let pausedLimit: TimeInterval = 60 * 60
+
     private func stopIfIdle() {
-        guard recorder.isActive, Date().timeIntervalSince(recorder.lastActivity) > Self.idleLimit else { return }
+        guard recorder.isActive else { return }
+        let quiet = recorder.isPaused
+            ? Date().timeIntervalSince(recorder.pausedSince ?? Date()) > Self.pausedLimit
+            : Date().timeIntervalSince(recorder.lastActivity) > Self.idleLimit
+        guard quiet else { return }
         recorder.addMarker(["k": "auto_stop_silence"])
         recorder.stop()
         sendSession(event: "stopped")
@@ -231,6 +238,10 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         case "stop":
             recorder.stop()
             sendSession(event: "stopped")
+        case "pause":
+            pauseRecording()
+        case "resume":
+            resumeRecording()
         case "marker":
             var marker = body
             marker.removeValue(forKey: "cmd")
@@ -265,10 +276,12 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         let sessions = recorder.list().map {
             ["name": $0.name, "started": $0.started, "durationMs": $0.durationMs, "notes": $0.notes, "playingMs": $0.playingMs,
              "pieces": $0.pieces, "sprintRounds": $0.sprintRounds,
-             "playing": $0.playing, "sprint": $0.sprint, "review": $0.review.map { $0 as Any } ?? NSNull(),
+             "playing": $0.playing, "sprint": $0.sprint, "paused": $0.paused, "pausedMs": $0.pausedMs,
+             "review": $0.review.map { $0 as Any } ?? NSNull(),
              "complete": $0.complete] as [String: Any]
         }
-        var state: [String: Any] = ["recording": recorder.isActive, "startedMs": recorder.startedMs, "sessions": sessions]
+        var state: [String: Any] = ["recording": recorder.isActive, "paused": recorder.isPaused,
+                                    "activeMs": recorder.activeSeconds * 1000, "startedMs": recorder.startedMs, "sessions": sessions]
         if let event { state["event"] = event }
         broadcast("window.sessionState && window.sessionState(\(Self.json(state)));")
         updatePill()
@@ -332,22 +345,61 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
     }
 
     private func refreshPillTitle() {
-        let seconds = Int(Date().timeIntervalSince1970 - recorder.startedMs / 1000)
+        let seconds = Int(recorder.activeSeconds)  // pauses don't count
         let clock = seconds >= 3600
             ? String(format: "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
             : String(format: "%d:%02d", seconds / 60, seconds % 60)
-        setTitle(pill, "●  Recording \(clock)")
+        pill.configuration?.baseBackgroundColor = recorder.isPaused
+            ? UIColor(red: 0.42, green: 0.44, blue: 0.56, alpha: 1)   // grey while paused
+            : UIColor(red: 0.85, green: 0.22, blue: 0.2, alpha: 1)
+        setTitle(pill, recorder.isPaused ? "❚❚  Paused \(clock) · tap to resume" : "●  Recording \(clock)")
+    }
+
+    /// Something came up: stop saving notes (and the click) until you're back. The plan timer waits too.
+    private func pauseRecording() {
+        guard recorder.isActive, !recorder.isPaused else { return }
+        if metronome.isOn { setMetronome(on: false) }
+        recorder.pause()
+        sendSession(event: "paused")
+        tickPlan()
+        sendPractice(event: nil)
+    }
+
+    private func resumeRecording() {
+        guard recorder.isPaused, let since = recorder.pausedSince else { return }
+        if var block = plan {
+            block.ends = block.ends.addingTimeInterval(Date().timeIntervalSince(since))
+            plan = block
+        }
+        recorder.resume()
+        sendSession(event: "resumed")
+        tickPlan()
+        sendPractice(event: nil)
     }
 
     @objc private func pillTapped() {
-        let alert = UIAlertController(title: "Stop recording?",
-                                      message: "The session is saved and listed under Sessions, where you can share it.",
+        if recorder.isPaused {
+            // Paused: one tap resumes; stopping is still there if you're done.
+            let alert = UIAlertController(title: "Recording is paused",
+                                          message: "Nothing you play is saved until you resume.", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "Resume", style: .default) { [weak self] _ in self?.resumeRecording() })
+            alert.addAction(UIAlertAction(title: "Stop & save", style: .default) { [weak self] _ in
+                self?.recorder.stop()
+                self?.sendSession(event: "stopped")
+            })
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            present(alert, animated: true)
+            return
+        }
+        let alert = UIAlertController(title: "Pause or stop?",
+                                      message: "Pause if something comes up: the session waits for you (up to an hour). Stop saves it under Sessions.",
                                       preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Keep recording", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Pause", style: .default) { [weak self] _ in self?.pauseRecording() })
         alert.addAction(UIAlertAction(title: "Stop & save", style: .default) { [weak self] _ in
             self?.recorder.stop()
             self?.sendSession(event: "stopped")
         })
+        alert.addAction(UIAlertAction(title: "Keep recording", style: .cancel))
         present(alert, animated: true)
     }
 
@@ -421,7 +473,7 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
                               goal: Self.text(body["goal"], 200), minutes: minutes,
                               started: Date(), ends: Date().addingTimeInterval(Double(minutes) * 60))
         // A plan block is practice worth reviewing: record it if nothing is recording yet.
-        if !recorder.isActive { startRecording() }
+        if !recorder.isActive { startRecording() } else if recorder.isPaused { resumeRecording() }
         plan = block
         var marker: [String: Any] = ["k": "plan_start", "id": block.id, "label": block.label, "min": minutes]
         if let bars = body["bars"] as? String { marker["bars"] = String(bars.prefix(40)) }
@@ -449,7 +501,8 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
 
     private func tickPlan() {
         guard var block = plan else { planPill.isHidden = true; return }
-        let left = Int(block.ends.timeIntervalSinceNow.rounded(.up))
+        let now = recorder.isPaused ? (recorder.pausedSince ?? Date()) : Date()  // the timer waits while paused
+        let left = Int(block.ends.timeIntervalSince(now).rounded(.up))
         if left <= 0 {
             if !block.chimed {
                 block.chimed = true
@@ -498,7 +551,8 @@ final class PracticeViewController: UIViewController, WKScriptMessageHandler, WK
         var state: [String: Any] = [
             "metronome": ["on": metronome.isOn, "bpm": s.bpm, "beats": s.beats, "sub": s.sub, "volume": s.volume] as [String: Any],
             "plan": plan.map { ["id": $0.id, "label": $0.label, "endsMs": $0.ends.timeIntervalSince1970 * 1000,
-                                "over": $0.chimed] as [String: Any] as Any } ?? NSNull(),
+                                "over": $0.chimed, "paused": recorder.isPaused,
+                                "leftMs": max(0, $0.ends.timeIntervalSince(recorder.pausedSince ?? Date()) * 1000)] as [String: Any] as Any } ?? NSNull(),
         ]
         if let event { state["event"] = event }
         broadcast("window.practiceState && window.practiceState(\(Self.json(state)));")

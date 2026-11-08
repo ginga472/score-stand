@@ -186,9 +186,12 @@ button.warn { color: var(--bad); }
 .timeline { position: relative; height: 22px; border-radius: 6px; background: var(--well); overflow: hidden; }
 .timeline i { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; min-width: 2px; }
 .timeline i.sprint { background: var(--dusk); }
+.timeline i.paused { background: repeating-linear-gradient(135deg, rgba(163, 167, 199, 0.35) 0 4px, transparent 4px 8px); }
+.rec-dot.paused { background: var(--muted); }
 .legend { display: flex; gap: 14px; color: var(--muted); font-size: 13px; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--accent); margin-right: 6px; }
 .legend i.sprint { background: var(--dusk); }
+.legend i.paused { background: repeating-linear-gradient(135deg, rgba(163, 167, 199, 0.6) 0 3px, transparent 3px 6px); }
 .rec-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--rec); }
 .rec-clock { font-variant-numeric: tabular-nums; }
 .head-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
