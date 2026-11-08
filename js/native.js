@@ -9,13 +9,16 @@ function post(handler, body) {
 export const openChordSprint = () => post('nav', { to: 'sprint' });
 
 // Practice-session recording runs in the app (it hears the piano over USB).
-let state = { recording: false, startedMs: 0, sessions: [] };
+let state = { recording: false, paused: false, activeMs: 0, at: 0, startedMs: 0, sessions: [] };
 const listeners = new Set();
 window.sessionState = (st) => {
-  state = { recording: !!st.recording, startedMs: st.startedMs || 0, sessions: st.sessions || state.sessions };
+  state = { recording: !!st.recording, paused: !!st.paused, activeMs: st.activeMs || 0, at: Date.now(),
+    startedMs: st.startedMs || 0, sessions: st.sessions || state.sessions };
   listeners.forEach((fn) => fn(state));
 };
 export const recording = () => state;
+// Recorded time so far, not counting pauses (frozen while paused).
+export const activeMs = () => state.activeMs + (state.recording && !state.paused ? Date.now() - state.at : 0);
 export function onRecording(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 // Tells a running recording what's on screen (score and page), for the practice summary.
 export const mark = (marker) => { if (state.recording) post('session', { cmd: 'marker', ...marker }); };

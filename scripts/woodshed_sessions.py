@@ -87,7 +87,8 @@ def plan(p):
 
 
 def clicks(path, tol=60):
-    """How closely the playing followed the built-in metronome, plus the plan blocks that were started.
+    """How closely the playing followed the built-in metronome, plus the plan blocks that were started
+    and any pauses (Alan paused recording; that time isn't practice or idle).
     Note onsets (chords grouped within 60 ms) are compared with the eighth-note grid of the clicks as
     heard (downbeatMs + latencyMs). "with click" = within ±tol ms; chance = what random playing would get."""
     import statistics as st
@@ -126,6 +127,8 @@ def clicks(path, tol=60):
                       f"median {st.median(win):+5.0f} ms")
     for m in marks:
         k = m.get("k", "")
+        if k in ("pause", "resume"):
+            print(f"{k} {clock(m['ms'])}")
         if k.startswith("plan_"):
             extra = {x: m[x] for x in ("label", "bars", "min", "bpm", "reason", "playedMin") if x in m}
             print(f"{k} {clock(m['ms'])} {m.get('id', '')} {json.dumps(extra, ensure_ascii=False)}")

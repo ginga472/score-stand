@@ -42,7 +42,7 @@ function timeline(x) {
   const pct = (f) => `${(f * 100).toFixed(1)}%`;
   const bar = (cls) => ([a, b]) => el('i', { class: cls, style: { left: pct(a), width: pct(Math.max(0.004, b - a)) } });
   return el('div', { class: 'timeline', title: 'When you were playing' },
-    (x.playing || []).map(bar(null)), (x.sprint || []).map(bar('sprint')));
+    (x.paused || []).map(bar('paused')), (x.playing || []).map(bar(null)), (x.sprint || []).map(bar('sprint')));
 }
 
 // Notes on a session (from a teacher, Claude, or yourself) arrive as a fenced block:
@@ -153,12 +153,12 @@ export function renderSessions(root, go) {
     summary.hidden = !st.sessions.length;
     const live = st.recording ? el('li', { class: 'session live' },
       el('div', { class: 'session-meta' },
-        el('strong', {}, el('span', { class: 'rec-dot' }), ' Recording now'),
+        el('strong', {}, el('span', { class: 'rec-dot' + (st.paused ? ' paused' : '') }), st.paused ? ' Paused' : ' Recording now'),
         el('span', { class: 'muted rec-clock' })),
-      el('span', { class: 'muted', text: 'Every note is being saved, on every screen.' }),
-      el('span', { class: 'muted', text: 'Tap the red bar to stop' })) : null;
+      el('span', { class: 'muted', text: st.paused ? "Nothing is being saved until you resume." : 'Every note is being saved, on every screen.' }),
+      el('span', { class: 'muted', text: st.paused ? 'Tap the grey bar to resume' : 'Tap the red bar to pause or stop' })) : null;
     if (live) {
-      const upd = () => { live.querySelector('.rec-clock').textContent = clock(Date.now() - st.startedMs); };
+      const upd = () => { live.querySelector('.rec-clock').textContent = clock(native.activeMs()); };
       upd();
       tick = setInterval(upd, 1000);
     }
@@ -169,7 +169,7 @@ export function renderSessions(root, go) {
       return el('li', { class: 'session' },
         el('div', { class: 'session-meta' },
           el('strong', { text: when(x.started) }),
-          el('span', { class: 'muted', text: `${minutes(x.durationMs)} · ${minutes(x.playingMs)} playing · ${x.notes} notes` })),
+          el('span', { class: 'muted', text: `${minutes(x.durationMs - (x.pausedMs || 0))} · ${minutes(x.playingMs)} playing · ${x.notes} notes${x.pausedMs >= 60000 ? ` · ${minutes(x.pausedMs)} paused` : ''}` })),
         el('div', {},
           timeline(x),
           what.length ? el('div', { class: 'tags' }, what.map((t) => el('span', { class: 'tag', text: t }))) : null),
@@ -185,7 +185,7 @@ export function renderSessions(root, go) {
 
   const empty = el('div', { class: 'empty' },
     el('p', { text: 'No sessions yet.' }),
-    el('p', { class: 'muted', text: 'Tap Record before you practice. Every note you play is saved, on any screen, until you stop or go 20 minutes without playing.' }));
+    el('p', { class: 'muted', text: 'Tap Record before you practice. Every note you play is saved, on any screen, until you stop or go 20 minutes without playing. Tap the red bar to pause if something comes up.' }));
 
   fill(root, el('div', { class: 'library' },
     app.bar,
@@ -194,7 +194,7 @@ export function renderSessions(root, go) {
         el('h1', { text: 'Sessions' }),
         el('p', { class: 'sub', text: 'Your recordings, with notes from whoever reviewed them.' })),
       el('div', { class: 'head-actions' },
-        el('div', { class: 'legend' }, el('span', {}, el('i'), 'Playing'), el('span', {}, el('i', { class: 'sprint' }), 'Chord Sprint')),
+        el('div', { class: 'legend' }, el('span', {}, el('i'), 'Playing'), el('span', {}, el('i', { class: 'sprint' }), 'Chord Sprint'), el('span', {}, el('i', { class: 'paused' }), 'Paused')),
         el('button', { onclick: native.paste }, 'Paste notes'))),
     summary,
     empty,

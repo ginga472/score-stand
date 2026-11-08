@@ -15,11 +15,17 @@ final class SessionRecorder {
         let sprintRounds: Int
         let playing: [[Double]]  // stretches of playing, as fractions of the session [start, end]
         let sprint: [[Double]]   // Chord Sprint rounds, the same way
+        let paused: [[Double]]   // paused stretches, the same way
+        let pausedMs: Int
         let review: String?      // Notes on the session (JSON text), pasted in or synced
         let complete: Bool       // false while it's still recording (or was cut off)
     }
 
     private(set) var isActive = false
+    /// Paused: still the same session, but nothing from the piano is saved until it resumes.
+    private(set) var isPaused = false
+    private(set) var pausedSince: Date?
+    private var pausedTotal: TimeInterval = 0
     private var name = ""
     private var startNs: UInt64 = 0
     private var startDate = Date()
@@ -61,7 +67,40 @@ final class SessionRecorder {
         markers = []
         self.devices = devices
         isActive = true
+        isPaused = false
+        pausedSince = nil
+        pausedTotal = 0
         lastActivity = Date()
+        save(final: false)
+    }
+
+    /// Recording time so far, not counting pauses.
+    var activeSeconds: TimeInterval {
+        guard isActive else { return 0 }
+        let current = pausedSince.map { Date().timeIntervalSince($0) } ?? 0
+        return max(0, Date().timeIntervalSince(startDate) - pausedTotal - current)
+    }
+
+    /// Paused time so far, including the pause going on now.
+    var pausedSeconds: TimeInterval {
+        pausedTotal + (pausedSince.map { Date().timeIntervalSince($0) } ?? 0)
+    }
+
+    func pause() {
+        guard isActive, !isPaused else { return }
+        addMarker(["k": "pause"])
+        isPaused = true
+        pausedSince = Date()
+        save(final: false)
+    }
+
+    func resume() {
+        guard isActive, isPaused, let since = pausedSince else { return }
+        pausedTotal += Date().timeIntervalSince(since)
+        isPaused = false
+        pausedSince = nil
+        lastActivity = Date()
+        addMarker(["k": "resume"])
         save(final: false)
     }
 
@@ -94,6 +133,19 @@ final class SessionRecorder {
         markers = obj["markers"] as? [[String: Any]] ?? []
         devices = obj["devices"] as? [String] ?? []
         isActive = true
+        // Pauses carry over: a session that was paused when the app closed is still paused.
+        isPaused = false
+        pausedSince = nil
+        pausedTotal = 0
+        for m in markers {
+            let at = start.addingTimeInterval(Double(m["ms"] as? Int ?? 0) / 1000)
+            switch m["k"] as? String {
+            case "pause": pausedSince = at
+            case "resume": if let p = pausedSince { pausedTotal += at.timeIntervalSince(p) }; pausedSince = nil
+            default: break
+            }
+        }
+        isPaused = pausedSince != nil
         lastActivity = Date()
         addMarker(["k": "resumed"])
         save(final: false)
@@ -105,6 +157,8 @@ final class SessionRecorder {
         addMarker(["k": "stop"])
         save(final: true)
         isActive = false
+        isPaused = false
+        pausedSince = nil
     }
 
     /// Writes what has been recorded so far (e.g. when the app goes to the background).
@@ -119,7 +173,7 @@ final class SessionRecorder {
     }
 
     func add(_ messages: [MIDIInput.Message]) {
-        guard isActive else { return }
+        guard isActive, !isPaused else { return }
         for m in messages {
             let kind = m.status & 0xF0
             // Notes, plus sustain / sostenuto / soft pedal.
@@ -220,6 +274,19 @@ final class SessionRecorder {
                 default: break
                 }
             }
+            var paused: [[Double]] = []
+            var pausedMs = 0
+            var pauseStart: Int?
+            for m in markers {
+                let ms = m["ms"] as? Int ?? 0
+                switch m["k"] as? String {
+                case "pause": pauseStart = ms
+                case "resume", "stop":
+                    if let p = pauseStart { paused.append([frac(p), frac(ms)]); pausedMs += ms - p; pauseStart = nil }
+                default: break
+                }
+            }
+            if let p = pauseStart { paused.append([frac(p), 1]); pausedMs += duration - p }
             return Summary(name: url.lastPathComponent,
                            started: Double(obj["startedEpochMs"] as? Int ?? 0),
                            durationMs: obj["durationMs"] as? Int ?? 0,
@@ -229,6 +296,8 @@ final class SessionRecorder {
                            sprintRounds: rounds,
                            playing: Array(spans.prefix(200)),
                            sprint: sprint,
+                           paused: paused,
+                           pausedMs: pausedMs,
                            review: try? String(contentsOf: SessionRecorder.notesURL(for: url), encoding: .utf8),
                            complete: obj["complete"] as? Bool ?? false)
         }.sorted { $0.started > $1.started }

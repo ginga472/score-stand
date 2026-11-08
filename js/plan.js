@@ -138,8 +138,8 @@ export function planCard(go) {
           : [el('button', { class: 'primary small', onclick: start }, 'Start')];
       if (live) {
         const upd = () => {
-          const s = Math.max(0, Math.round((running.endsMs - Date.now()) / 1000));
-          clock.textContent = s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} left` : "Time's up";
+          const s = Math.max(0, Math.round((running.paused ? running.leftMs : running.endsMs - Date.now()) / 1000));
+          clock.textContent = s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} left${running.paused ? ' · paused' : ''}` : "Time's up";
         };
         upd();
         tick = setInterval(upd, 1000);
