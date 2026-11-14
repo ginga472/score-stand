@@ -29,6 +29,12 @@ done
 out=$(curl -s -w ' %{http_code}' -X POST "$URL/rest/v1/rpc/save_session_notes" -H "apikey: $KEY" -H 'Content-Type: application/json' \
   -d '{"p_name":"session-2000-01-01-000000.json","p_notes":{}}')
 check "anonymous save_session_notes is refused" '40[0-9]$' "$out"
+out=$(curl -s -w ' %{http_code}' -X POST "$URL/rest/v1/rpc/add_score" -H "apikey: $KEY" -H 'Content-Type: application/json' \
+  -d '{"p_id":"00000000-0000-0000-0000-000000000001","p_title":"probe","p_page_count":1}')
+check "anonymous add_score is refused" '40[0-9]$' "$out"
+out=$(curl -s -w ' %{http_code}' -X POST "$URL/rest/v1/rpc/remove_score" -H "apikey: $KEY" -H 'Content-Type: application/json' \
+  -d '{"p_id":"00000000-0000-0000-0000-000000000001"}')
+check "anonymous remove_score is refused" '40[0-9]$' "$out"
 out=$(curl -s -w ' %{http_code}' -X POST "$URL/auth/v1/signup" -H "apikey: $KEY" -H 'Content-Type: application/json' \
   -d "{\"email\":\"probe-$RANDOM@example.com\",\"password\":\"Probe-$RANDOM-$RANDOM-long-password\"}")
 check "sign-ups are disabled" '(signup_disabled|Signups not allowed|not allowed).* 4[0-9][0-9]$' "$out"

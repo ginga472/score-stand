@@ -49,3 +49,13 @@ The iPad app bundles these same files and adds two things a web page can't do: r
 - **Notes are cleaned twice:** by the reviewer client and again by the app (`parseNotes`) before display.
 - **Reviews are shown as plain text** in the app (`textContent`), never as HTML.
 - Chord Sprint (`chord-sprint/`) has its own strict CSP (no inline script or style). It builds its staff SVG with `innerHTML` from internal data only; no user-entered text reaches it.
+
+## Score inbox (`supabase/score-inbox.sql`)
+
+Lets the reviewer (Claude) put new practice pieces into your library, and remove the ones it added.
+
+- **Upload is insert-only.** One extra storage policy lets a linked reviewer create `<your id>/<new uuid>.pdf` in the private `scores` bucket. It still can't read, list, overwrite or delete any score file.
+- **One write function.** `add_score(id, title, page_count, tags)` is security definer: it checks the caller is a linked reviewer, the PDF it names was uploaded, the title/tags/page count are within limits, then inserts a new row owned by you (tagged "from Claude"). An id that already exists is refused, so it never changes an existing score. It returns only true/false, so the reviewer still can't see your library.
+- **Removing is limited to its own additions.** `add_score` records each addition in `reviewer_scores` (no API access). `remove_score(id)` soft-deletes a score only if that reviewer added it; `reviewer_scores_list()` shows only those (id, title, pages). Storage read/delete policies cover only those PDFs. Scores you imported can't be seen, changed or removed.
+- Your devices pick changes up on the next sync. You can still edit or delete any score in the app.
+- Revoke just this with the `drop` lines at the bottom of the file; deleting the reviewer user revokes everything.
