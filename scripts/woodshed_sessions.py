@@ -8,6 +8,9 @@ Needs WOODSHED_REVIEWER_EMAIL and WOODSHED_REVIEWER_PASSWORD in the environment.
   python3 -I woodshed_sessions.py get NAME [OUT.json]     download one session file
   python3 -I woodshed_sessions.py notes NAME NOTES.json   save notes (the woodshed block's JSON)
   python3 -I woodshed_sessions.py clicks FILE.json        metronome and plan-block summary of a downloaded session
+  python3 -I woodshed_sessions.py add-score FILE.pdf "Title" [tag ...]
+                                                          add a new PDF to the library (score inbox, add-only;
+                                                          see supabase/score-inbox.sql). Needs pypdf for the page count.
 Uses only the standard library; HTTPS_PROXY and SSL_CERT_FILE are honored.
 """
 import json, os, re, ssl, sys, urllib.parse, urllib.request
@@ -134,6 +137,37 @@ def clicks(path, tol=60):
             print(f"{k} {clock(m['ms'])} {m.get('id', '')} {json.dumps(extra, ensure_ascii=False)}")
 
 
+def pages(path):
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        sys.exit("pip install pypdf (used to count pages)")
+    return len(PdfReader(path).pages)
+
+
+def add_score(path, title, tags):
+    import uuid
+    with open(path, "rb") as f:
+        data = f.read()
+    if not data.startswith(b"%PDF-") or len(data) > 80 * 1024 * 1024:
+        sys.exit("not a PDF, or over 80 MB")
+    n = pages(path)
+    sid = str(uuid.uuid4())
+    # The owner's id is the folder name; the reviewer learns it from its readable session rows.
+    rows = http("GET", "/rest/v1/practice_sessions?select=owner&limit=1")
+    if not rows:
+        sys.exit("can't find the owner account (no readable sessions)")
+    owner = rows[0]["owner"]
+    req = urllib.request.Request(f"{URL}/storage/v1/object/scores/{owner}/{sid}.pdf", data=data, method="POST",
+                                 headers={"apikey": KEY, "Authorization": f"Bearer {token()}", "Content-Type": "application/pdf"})
+    try:
+        urllib.request.urlopen(req, context=CTX, timeout=120).read()
+    except urllib.error.HTTPError as e:
+        sys.exit(f"upload refused {e.code}: {e.read().decode()[:300]}")
+    ok = http("POST", "/rest/v1/rpc/add_score", {"p_id": sid, "p_title": title, "p_page_count": n, "p_tags": tags[:8]})
+    print(f"added '{title}' ({n} pages, id {sid})" if ok else "not added")
+
+
 def main(argv):
     if not argv:
         sys.exit(__doc__)
@@ -159,6 +193,8 @@ def main(argv):
             notes = clean(json.load(f), r["name"])
         ok = http("POST", "/rest/v1/rpc/save_session_notes", {"p_name": r["name"], "p_notes": notes})
         print("saved" if ok else "not saved (no access to that session)")
+    elif cmd == "add-score" and len(argv) >= 3:
+        add_score(argv[1], argv[2], argv[3:])
     elif cmd == "clicks" and len(argv) == 2:
         clicks(argv[1])
     else:
