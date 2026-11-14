@@ -11,6 +11,8 @@ Needs WOODSHED_REVIEWER_EMAIL and WOODSHED_REVIEWER_PASSWORD in the environment.
   python3 -I woodshed_sessions.py add-score FILE.pdf "Title" [tag ...]
                                                           add a new PDF to the library (score inbox, add-only;
                                                           see supabase/score-inbox.sql). Needs pypdf for the page count.
+  python3 -I woodshed_sessions.py my-scores              scores this account added that are still in the library
+  python3 -I woodshed_sessions.py remove-score ID        remove one of those (never any other score)
 Uses only the standard library; HTTPS_PROXY and SSL_CERT_FILE are honored.
 """
 import json, os, re, ssl, sys, urllib.parse, urllib.request
@@ -168,6 +170,16 @@ def add_score(path, title, tags):
     print(f"added '{title}' ({n} pages, id {sid})" if ok else "not added")
 
 
+def remove_score(sid):
+    rows = [r for r in http("POST", "/rest/v1/rpc/reviewer_scores_list", {}) if r["id"] == sid]
+    if not rows:
+        sys.exit("not one of the scores this account added")
+    owner = http("GET", "/rest/v1/practice_sessions?select=owner&limit=1")[0]["owner"]
+    http("DELETE", f"/storage/v1/object/scores/{owner}/{sid}.pdf")
+    ok = http("POST", "/rest/v1/rpc/remove_score", {"p_id": sid})
+    print(f"removed '{rows[0]['title']}'" if ok else "not removed")
+
+
 def main(argv):
     if not argv:
         sys.exit(__doc__)
@@ -195,6 +207,11 @@ def main(argv):
         print("saved" if ok else "not saved (no access to that session)")
     elif cmd == "add-score" and len(argv) >= 3:
         add_score(argv[1], argv[2], argv[3:])
+    elif cmd == "my-scores":
+        for r in http("POST", "/rest/v1/rpc/reviewer_scores_list", {}):
+            print(f"{r['id']}  {r['added_at'][:10]}  {r['page_count']:3} pp  {r['title']}")
+    elif cmd == "remove-score" and len(argv) == 2:
+        remove_score(argv[1])
     elif cmd == "clicks" and len(argv) == 2:
         clicks(argv[1])
     else:
