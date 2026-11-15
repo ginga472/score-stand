@@ -41,6 +41,14 @@ drop policy if exists scores_reviewer_own_delete on storage.objects;
 create policy scores_reviewer_own_delete on storage.objects for delete to authenticated
   using (bucket_id = 'scores' and public.reviewer_added_file(name));
 
+-- Storage's upload is INSERT ... RETURNING, which Postgres only allows when the new row is also
+-- visible to the uploader. So a reviewer may see PDFs it uploaded itself (storage stamps owner_id),
+-- and still none of yours.
+drop policy if exists scores_reviewer_uploaded_read on storage.objects;
+create policy scores_reviewer_uploaded_read on storage.objects for select to authenticated
+  using (bucket_id = 'scores' and owner_id = (select auth.uid())::text
+         and public.reviews_for((storage.foldername(name))[1]));
+
 drop policy if exists scores_reviewer_add on storage.objects;
 create policy scores_reviewer_add on storage.objects for insert to authenticated
   with check (
