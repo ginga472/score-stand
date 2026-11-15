@@ -49,3 +49,12 @@ The iPad app bundles these same files and adds two things a web page can't do: r
 - **Notes are cleaned twice:** by the reviewer client and again by the app (`parseNotes`) before display.
 - **Reviews are shown as plain text** in the app (`textContent`), never as HTML.
 - Chord Sprint (`chord-sprint/`) has its own strict CSP (no inline script or style). It builds its staff SVG with `innerHTML` from internal data only; no user-entered text reaches it.
+
+## Library access for the reviewer (`supabase/score-inbox.sql`)
+
+At your request (2026-11-15: the library is free public-domain PDFs, not sensitive), the reviewer (Claude) can help manage the score library.
+
+- **Scope.** RLS policies let a linked reviewer read and write `scores` and `setlists` rows owned by you, and read/upload/replace/delete PDFs in your folder of the private `scores` bucket. Removing a score is a soft delete, same as the app, so devices drop it on their next sync.
+- **Still owner-only:** markup (`ink`), practice spots, and everything about sessions except reading them and writing notes.
+- **No admin key.** Access still comes from the reviewer's own user and its row in `session_reviewers`; nothing anonymous changes (`check-security.sh`).
+- Revoke just this with the `drop` lines at the bottom of the file; deleting the reviewer user revokes everything.
