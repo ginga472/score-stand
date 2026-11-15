@@ -6,7 +6,7 @@
 #   ./supabase/setup-sessions.sh sql EMAIL        copies sessions.sql (with EMAIL filled in) and opens the
 #                                                 SQL editor: paste, Run. It links the reviewer to your account.
 #   ./supabase/setup-sessions.sh inbox            copies score-inbox.sql and opens the SQL editor: paste, Run.
-#                                                 Lets the reviewer add new scores (add-only).
+#                                                 Lets the reviewer manage your score library.
 # To revoke the reviewer, delete that user in Supabase (its link goes with it).
 # To rotate its password, run `reviewer` again and reset the password on that user.
 set -euo pipefail

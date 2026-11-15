@@ -8,11 +8,12 @@ Needs WOODSHED_REVIEWER_EMAIL and WOODSHED_REVIEWER_PASSWORD in the environment.
   python3 -I woodshed_sessions.py get NAME [OUT.json]     download one session file
   python3 -I woodshed_sessions.py notes NAME NOTES.json   save notes (the woodshed block's JSON)
   python3 -I woodshed_sessions.py clicks FILE.json        metronome and plan-block summary of a downloaded session
-  python3 -I woodshed_sessions.py add-score FILE.pdf "Title" [tag ...]
-                                                          add a new PDF to the library (score inbox, add-only;
-                                                          see supabase/score-inbox.sql). Needs pypdf for the page count.
-  python3 -I woodshed_sessions.py my-scores              scores this account added that are still in the library
-  python3 -I woodshed_sessions.py remove-score ID        remove one of those (never any other score)
+Library (needs supabase/score-inbox.sql; pypdf for page counts):
+  python3 -I woodshed_sessions.py scores                  list the score library
+  python3 -I woodshed_sessions.py add-score FILE.pdf "Title" [tag ...]   upload a new score (tagged "from Claude")
+  python3 -I woodshed_sessions.py edit-score ID [--title T] [--tags a,b]  rename or retag
+  python3 -I woodshed_sessions.py remove-score ID         remove (soft delete, like the app) and delete its PDF
+  python3 -I woodshed_sessions.py get-score ID [OUT.pdf]  download a score's PDF
 Uses only the standard library; HTTPS_PROXY and SSL_CERT_FILE are honored.
 """
 import json, os, re, ssl, sys, urllib.parse, urllib.request
@@ -147,37 +148,71 @@ def pages(path):
     return len(PdfReader(path).pages)
 
 
+def owner_id():
+    rows = http("GET", "/rest/v1/practice_sessions?select=owner&limit=1")
+    if not rows:
+        sys.exit("can't find the owner account (no readable sessions)")
+    return rows[0]["owner"]
+
+
+def now_ms():
+    import time
+    return int(time.time() * 1000)
+
+
+def score(sid):
+    rows = http("GET", f"/rest/v1/scores?select=*&id=eq.{urllib.parse.quote(sid)}&deleted=is.false")
+    if not rows:
+        sys.exit(f"no score with id {sid}")
+    return rows[0]
+
+
+def storage(method, path, data=None, ctype="application/pdf"):
+    req = urllib.request.Request(f"{URL}/storage/v1/object/{path}", data=data, method=method,
+                                 headers={"apikey": KEY, "Authorization": f"Bearer {token()}", "Content-Type": ctype})
+    try:
+        with urllib.request.urlopen(req, context=CTX, timeout=120) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        sys.exit(f"storage {method} refused {e.code}: {e.read().decode()[:300]}")
+
+
 def add_score(path, title, tags):
     import uuid
     with open(path, "rb") as f:
         data = f.read()
     if not data.startswith(b"%PDF-") or len(data) > 80 * 1024 * 1024:
         sys.exit("not a PDF, or over 80 MB")
-    n = pages(path)
-    sid = str(uuid.uuid4())
-    # The owner's id is the folder name; the reviewer learns it from its readable session rows.
-    rows = http("GET", "/rest/v1/practice_sessions?select=owner&limit=1")
-    if not rows:
-        sys.exit("can't find the owner account (no readable sessions)")
-    owner = rows[0]["owner"]
-    req = urllib.request.Request(f"{URL}/storage/v1/object/scores/{owner}/{sid}.pdf", data=data, method="POST",
-                                 headers={"apikey": KEY, "Authorization": f"Bearer {token()}", "Content-Type": "application/pdf"})
-    try:
-        urllib.request.urlopen(req, context=CTX, timeout=120).read()
-    except urllib.error.HTTPError as e:
-        sys.exit(f"upload refused {e.code}: {e.read().decode()[:300]}")
-    ok = http("POST", "/rest/v1/rpc/add_score", {"p_id": sid, "p_title": title, "p_page_count": n, "p_tags": tags[:8]})
-    print(f"added '{title}' ({n} pages, id {sid})" if ok else "not added")
+    n, sid, owner = pages(path), str(uuid.uuid4()), owner_id()
+    storage("POST", f"scores/{owner}/{sid}.pdf", data)
+    tags = list(dict.fromkeys([t[:40] for t in tags if t] + ["from Claude"]))[:8]
+    http("POST", "/rest/v1/scores", {"id": sid, "owner": owner, "title": title[:200], "tags": tags, "page_count": n,
+                                     "last_page": 1, "updated_ms": now_ms(), "deleted": False})
+    print(f"added '{title}' ({n} pages, id {sid})")
+
+
+def edit_score(sid, args):
+    s, patch = score(sid), {}
+    while args:
+        k, v, args = args[0], args[1] if len(args) > 1 else "", args[2:]
+        if k == "--title" and v:
+            patch["title"] = v[:200]
+        elif k == "--tags":
+            patch["tags"] = [t.strip()[:40] for t in v.split(",") if t.strip()][:8]
+        else:
+            sys.exit(__doc__)
+    if not patch:
+        sys.exit("nothing to change")
+    patch["updated_ms"] = now_ms()
+    http("PATCH", f"/rest/v1/scores?id=eq.{s['id']}", patch)
+    print(f"updated '{patch.get('title', s['title'])}'")
 
 
 def remove_score(sid):
-    rows = [r for r in http("POST", "/rest/v1/rpc/reviewer_scores_list", {}) if r["id"] == sid]
-    if not rows:
-        sys.exit("not one of the scores this account added")
-    owner = http("GET", "/rest/v1/practice_sessions?select=owner&limit=1")[0]["owner"]
-    http("DELETE", f"/storage/v1/object/scores/{owner}/{sid}.pdf")
-    ok = http("POST", "/rest/v1/rpc/remove_score", {"p_id": sid})
-    print(f"removed '{rows[0]['title']}'" if ok else "not removed")
+    s = score(sid)
+    http("PATCH", f"/rest/v1/scores?id=eq.{s['id']}", {"deleted": True, "updated_ms": now_ms()})
+    storage("DELETE", f"scores/{s['owner']}/{s['id']}.pdf", ctype="application/json")
+    print(f"removed '{s['title']}'")
 
 
 def main(argv):
@@ -207,11 +242,19 @@ def main(argv):
         print("saved" if ok else "not saved (no access to that session)")
     elif cmd == "add-score" and len(argv) >= 3:
         add_score(argv[1], argv[2], argv[3:])
-    elif cmd == "my-scores":
-        for r in http("POST", "/rest/v1/rpc/reviewer_scores_list", {}):
-            print(f"{r['id']}  {r['added_at'][:10]}  {r['page_count']:3} pp  {r['title']}")
+    elif cmd == "scores":
+        for r in http("GET", "/rest/v1/scores?select=id,title,tags,page_count,added_at&deleted=is.false&order=title"):
+            print(f"{r['id']}  {r['added_at'][:10]}  {r['page_count']:3} pp  {r['title']}  [{', '.join(r['tags'])}]")
+    elif cmd == "edit-score" and len(argv) >= 3:
+        edit_score(argv[1], argv[2:])
     elif cmd == "remove-score" and len(argv) == 2:
         remove_score(argv[1])
+    elif cmd == "get-score" and len(argv) >= 2:
+        s = score(argv[1])
+        out = argv[2] if len(argv) > 2 else re.sub(r"[^a-z0-9]+", "-", s["title"].lower()).strip("-") + ".pdf"
+        with open(out, "wb") as f:
+            f.write(storage("GET", f"authenticated/scores/{s['owner']}/{s['id']}.pdf", ctype="application/json"))
+        print(f"saved {out}")
     elif cmd == "clicks" and len(argv) == 2:
         clicks(argv[1])
     else:
