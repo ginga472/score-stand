@@ -168,8 +168,10 @@ def score(sid):
 
 
 def storage(method, path, data=None, ctype="application/pdf"):
-    req = urllib.request.Request(f"{URL}/storage/v1/object/{path}", data=data, method=method,
-                                 headers={"apikey": KEY, "Authorization": f"Bearer {token()}", "Content-Type": ctype})
+    headers = {"apikey": KEY, "Authorization": f"Bearer {token()}"}
+    if data is not None:
+        headers["Content-Type"] = ctype
+    req = urllib.request.Request(f"{URL}/storage/v1/object/{path}", data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, context=CTX, timeout=120) as r:
             return r.read()
@@ -211,7 +213,7 @@ def edit_score(sid, args):
 def remove_score(sid):
     s = score(sid)
     http("PATCH", f"/rest/v1/scores?id=eq.{s['id']}", {"deleted": True, "updated_ms": now_ms()})
-    storage("DELETE", f"scores/{s['owner']}/{s['id']}.pdf", ctype="application/json")
+    storage("DELETE", f"scores/{s['owner']}/{s['id']}.pdf")
     print(f"removed '{s['title']}'")
 
 
@@ -253,7 +255,7 @@ def main(argv):
         s = score(argv[1])
         out = argv[2] if len(argv) > 2 else re.sub(r"[^a-z0-9]+", "-", s["title"].lower()).strip("-") + ".pdf"
         with open(out, "wb") as f:
-            f.write(storage("GET", f"authenticated/scores/{s['owner']}/{s['id']}.pdf", ctype="application/json"))
+            f.write(storage("GET", f"authenticated/scores/{s['owner']}/{s['id']}.pdf"))
         print(f"saved {out}")
     elif cmd == "clicks" and len(argv) == 2:
         clicks(argv[1])
